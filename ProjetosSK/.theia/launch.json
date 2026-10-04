@@ -1,0 +1,248 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "SK01Degrau",
+      "type": "ccs-debug",
+      "request": "launch",
+      "projectInfo": {
+        "name": "SK01Degrau",
+        "resourceId": "/SK01Degrau"
+      },
+      "connections": [
+        {
+          "name": "Texas Instruments XDS100v2 USB Debug Probe_0",
+          "cores": [
+            {
+              "name": "C28xx_CPU1",
+              "debuggerSettings": {
+                "data": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n<PropertyValues/>\n"
+              }
+            }
+          ]
+        }
+      ],
+      "launchSettings": {
+        "coresToLoadForProjectLaunch": [
+          "C28xx_CPU1"
+        ]
+      }
+    },
+    {
+      "name": "SK02PRBS",
+      "type": "ccs-debug",
+      "request": "launch",
+      "projectInfo": {
+        "name": "SK02PRBS",
+        "resourceId": "/SK02PRBS"
+      },
+      "connections": [
+        {
+          "name": "Texas Instruments XDS100v2 USB Debug Probe_0",
+          "cores": [
+            {
+              "name": "C28xx_CPU1",
+              "debuggerSettings": {
+                "data": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n<PropertyValues/>\n"
+              }
+            }
+          ]
+        }
+      ],
+      "launchSettings": {
+        "coresToLoadForProjectLaunch": [
+          "C28xx_CPU1"
+        ]
+      }
+    },
+    {
+      "name": "SK03ControleP",
+      "type": "ccs-debug",
+      "request": "launch",
+      "projectInfo": {
+        "name": "SK03ControleP",
+        "resourceId": "/SK03ControleP"
+      },
+      "connections": [
+        {
+          "name": "Texas Instruments XDS100v2 USB Debug Probe_0",
+          "cores": [
+            {
+              "name": "C28xx_CPU1",
+              "debuggerSettings": {
+                "data": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n<PropertyValues/>\n"
+              }
+            }
+          ]
+        }
+      ],
+      "launchSettings": {
+        "coresToLoadForProjectLaunch": [
+          "C28xx_CPU1"
+        ]
+      }
+    },
+    {
+      "name": "SK04ControlePI",
+      "type": "ccs-debug",
+      "request": "launch",
+      "projectInfo": {
+        "name": "SK04ControlePI",
+        "resourceId": "/SK04ControlePI"
+      },
+      "connections": [
+        {
+          "name": "Texas Instruments XDS100v2 USB Debug Probe_0",
+          "cores": [
+            {
+              "name": "C28xx_CPU1",
+              "debuggerSettings": {
+                "data": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n<PropertyValues/>\n"
+              }
+            }
+          ]
+        }
+      ],
+      "launchSettings": {
+        "coresToLoadForProjectLaunch": [
+          "C28xx_CPU1"
+        ]
+      }
+    },
+    {
+      "name": "SK05Senoide",
+      "type": "ccs-debug",
+      "request": "launch",
+      "projectInfo": {
+        "name": "SK05Senoide",
+        "resourceId": "/SK05Senoide"
+      },
+      "connections": [
+        {
+          "name": "Texas Instruments XDS100v2 USB Debug Probe_0",
+          "cores": [
+            {
+              "name": "C28xx_CPU1",
+              "debuggerSettings": {
+                "data": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n<PropertyValues/>\n"
+              }
+            }
+          ]
+        }
+      ],
+      "launchSettings": {
+        "coresToLoadForProjectLaunch": [
+          "C28xx_CPU1"
+        ]
+      }
+    },
+    {
+      "name": "SK06VarreduraSenoidal",
+      "type": "ccs-debug",
+      "request": "launch",
+      "projectInfo": {
+        "name": "SK06VarreduraSenoidal",
+        "resourceId": "/SK06VarreduraSenoidal"
+      },
+      "connections": [
+        {
+          "name": "Texas Instruments XDS100v2 USB Debug Probe_0",
+          "cores": [
+            {
+              "name": "C28xx_CPU1",
+              "debuggerSettings": {
+                "data": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n<PropertyValues/>\n"
+              }
+            }
+          ]
+        }
+      ],
+      "launchSettings": {
+        "coresToLoadForProjectLaunch": [
+          "C28xx_CPU1"
+        ]
+      }
+    },
+    {
+      "name": "SK07MPCNumerico",
+      "type": "ccs-debug",
+      "request": "launch",
+      "projectInfo": {
+        "name": "SK07MPCNumerico",
+        "resourceId": "/SK07MPCNumerico"
+      },
+      "connections": [
+        {
+          "name": "Texas Instruments XDS100v2 USB Debug Probe_0",
+          "cores": [
+            {
+              "name": "C28xx_CPU1",
+              "debuggerSettings": {
+                "data": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n<PropertyValues/>\n"
+              }
+            }
+          ]
+        }
+      ],
+      "launchSettings": {
+        "coresToLoadForProjectLaunch": [
+          "C28xx_CPU1"
+        ]
+      }
+    },
+    {
+      "name": "SK08MPCAnalitico",
+      "type": "ccs-debug",
+      "request": "launch",
+      "projectInfo": {
+        "name": "SK08MPCAnalitico",
+        "resourceId": "/SK08MPCAnalitico"
+      },
+      "connections": [
+        {
+          "name": "Texas Instruments XDS100v2 USB Debug Probe_0",
+          "cores": [
+            {
+              "name": "C28xx_CPU1",
+              "debuggerSettings": {
+                "data": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n<PropertyValues/>\n"
+              }
+            }
+          ]
+        }
+      ],
+      "launchSettings": {
+        "coresToLoadForProjectLaunch": [
+          "C28xx_CPU1"
+        ]
+      }
+    },
+    {
+      "name": "SK09MPCRestricoes",
+      "type": "ccs-debug",
+      "request": "launch",
+      "projectInfo": {
+        "name": "SK09MPCRestricoes",
+        "resourceId": "/SK09MPCRestricoes"
+      },
+      "connections": [
+        {
+          "name": "Texas Instruments XDS100v2 USB Debug Probe_0",
+          "cores": [
+            {
+              "name": "C28xx_CPU1",
+              "debuggerSettings": {
+                "data": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>\n<PropertyValues/>\n"
+              }
+            }
+          ]
+        }
+      ],
+      "launchSettings": {
+        "coresToLoadForProjectLaunch": [
+          "C28xx_CPU1"
+        ]
+      }
+    }
+  ]
+}

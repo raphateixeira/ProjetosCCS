@@ -1,0 +1,1056 @@
+---
+title: "Nota 03 — Planejamento dos Ensaios de Controle"
+subtitle: "Filtro Sallen-Key com a LaunchPad LAUNCHXL-F28379D: do P ao MPC antecipatório"
+description: "Sequência didática de dez ensaios de controle sobre o filtro Sallen-Key: projetos calculados a partir do modelo ARX, simulações com saturação e ruído, métricas previstas e especificação do firmware SK03Controle."
+author: "Raphael Teixeira"
+date: "2026-10-01"
+date-modified: last-modified
+categories: [C2000, CCS, Controle, PID, RST, GPC, MPC]
+placa: "LAUNCHXL-F28379D"
+ordem: 3
+status: rascunho
+lang: pt-BR
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: true
+    code-summary: "Código"
+    html-math-method: mathjax
+execute:
+  echo: true
+  warning: false
+jupyter: python3
+---
+
+[⬅ Índice](../../index.qmd) · Modelo: [Nota 02](../IdentificacaoSallenKeyPRBS/index.qmd) ·
+Placa: [Nota 01](../Nota01LaunchPadF28379D.qmd)
+
+```{python}
+#| label: setup
+#| code-summary: "Configuração, planta e funções auxiliares"
+import sys
+import numpy as np
+import matplotlib.pyplot as plt
+from IPython.display import Markdown
+
+sys.path.insert(0, "analise")
+import controle_sim as cs
+
+plt.style.use("../../estilo_graficos.mplstyle")
+plt.rcParams.update({"font.size": 13, "axes.labelsize": 14, "axes.titlesize": 14,      # figuras de
+                     "xtick.labelsize": 12, "ytick.labelsize": 12, "legend.fontsize": 11})  # página (9 pol.)
+AZUL, VERMELHO, VERDE, CINZA, LARANJA = "#1F3A5F", "#C0392B", "#2E8B57", "#5F6B7A", "#D68910"
+TS = cs.TS
+
+def br(x, n=2):
+    return f"{x:.{n}f}".replace(".", ",")
+
+def ms(x):
+    return br(1e3 * x, 0)
+
+def brm(x, n=2):
+    """Número com vírgula decimal para usar dentro de LaTeX ($...$)."""
+    return br(x, n).replace(",", "{,}")
+
+def raizes(rs):
+    """Raízes formatadas; pares conjugados aparecem uma vez (a ± jb)."""
+    return ", ".join(br(z.real, 3) if abs(z.imag) < 1e-9 else f"{br(z.real, 3)} ± j{br(abs(z.imag), 3)}"
+                     for z in rs if z.imag >= -1e-9)
+
+rA = cs.ref_quadrada()          # referência A: onda quadrada 0,8 ↔ 1,2 V
+rB = cs.ref_saturacao()         # referência B: degrau para nível inatingível (saturação)
+
+def figura(sims, titulo, janela=None, ref=True, ylim_u=None):
+    """r, y (sem ruído) e u de uma ou mais simulações."""
+    fig, (a1, a2) = plt.subplots(2, 1, figsize=(9, 5.2), sharex=True,
+                                 gridspec_kw={"height_ratios": [3, 2]})
+    cores = [AZUL, VERMELHO, VERDE, LARANJA, CINZA]
+    for i, (nome, s) in enumerate(sims.items()):
+        c = cores[i % len(cores)]
+        if ref and i == 0:
+            a1.step(s["t"], s["r"], where="post", color="k", lw=1.8, ls="--", label="r")
+        a1.plot(s["t"], s["y"], color=c, lw=1.6, label=nome)
+        a2.step(s["t"], s["u"], where="post", color=c, lw=1.8, label=nome)
+    a2.axhline(cs.U_MAX, color="k", lw=0.8, ls=":"); a2.axhline(cs.U_MIN, color="k", lw=0.8, ls=":")
+    a1.set_ylabel("y (V)"); a2.set_ylabel("u (V)"); a2.set_xlabel("t (s)")
+    a1.set_title(titulo, fontsize=11)
+    a1.legend(fontsize=9, loc="best")
+    if janela:
+        a1.set_xlim(*janela)
+    if ylim_u:
+        a2.set_ylim(*ylim_u)
+    fig.tight_layout()
+    return fig
+
+def linha_metricas(nome, s, k0=20, k1=70, tcalc=None, degrau=True):
+    m = cs.metricas(s, k0, k1)
+    s0 = s.get("sem_ruido", s)
+    m0 = cs.metricas(s0, k0, k1)
+    if not degrau:      # antecipação: a saída se move antes do degrau; t_s e sobressinal não se aplicam
+        return (f"| {nome} | — | — | — | {br(1e3 * m0['IAE'], 1)} | — | "
+                f"{br(m['TV'], 2)} | {tcalc if tcalc else '—'} |")
+    ess = 0.0 if abs(m0["ess"]) < 5e-5 else m0["ess"]
+    return (f"| {nome} | {ms(m0['ts'])} | {br(m0['os'], 1)} | {br(1e3 * ess, 1)} | "
+            f"{br(1e3 * m0['IAE'], 1)} | {br(1e3 * m['std_u'], 1)} | {br(m['TV'], 2)} | "
+            f"{tcalc if tcalc else '—'} |")
+
+CAB = ("| Controlador | $t_s$ (ms) | sobressinal (%) | erro em regime (mV) | IAE (mV·s) | "
+       "desvio de u (mV) | variação total de u (V) | cálculo |\n|---|---|---|---|---|---|---|---|")
+
+def roda(ctrl_fabrica, r, semente=1):
+    """Simula com ruído (o que a placa verá) e sem ruído (para t_s, sobressinal, IAE)."""
+    s = cs.simula(ctrl_fabrica(), r, ruido=True, semente=semente)
+    s["sem_ruido"] = cs.simula(ctrl_fabrica(), r, ruido=False)
+    return s
+```
+
+# Objetivo e organização
+
+Esta nota planeja uma sequência de **dez ensaios de controle** sobre o filtro Sallen-Key
+identificado na [Nota 02](../IdentificacaoSallenKeyPRBS/index.qmd), todos com a mesma placa,
+o mesmo período de amostragem e a mesma especificação, para que a comparação seja justa.
+Para cada ensaio há: objetivo didático, projeto calculado a partir do modelo ARX, simulação
+com saturação do atuador e ruído do ADC, métricas previstas, parâmetros para o firmware e o
+nome do arquivo de dados.
+
+O roteiro foi montado para mostrar **também o que não funciona bem** — erro em regime do P,
+*windup*, chute derivativo, amplificação de ruído, observadores *deadbeat*, convergência lenta
+de otimizadores — e explicar por quê. Os números desta nota são **previsões**; os ensaios na
+placa vão confirmá-los ou não.
+
+| # | Ensaio | Ideia central |
+|---|---|---|
+| 1 | P puro | erro em regime numa planta tipo 0 |
+| 2 | PI sem anti-windup | erro nulo, mas *windup* sob saturação |
+| 3 | PI com anti-windup | integração condicional e retrocálculo |
+| 4 | PID ideal | chute derivativo e ruído na ação de controle |
+| 5 | PID com filtro e derivada na medida | problemas mitigados, ganho de desempenho pequeno |
+| 6 | Controladores na forma RST | mesma resposta, outra escrita |
+| 7 | RST por alocação de polos | diofantina, separação rastreamento × regulação, anti-windup |
+| 8 | GPC sem restrições | a lei preditiva é um RST |
+| 9 | MPC com restrições | QP na placa (Hildreth) |
+| 10 | MPC antecipatório | conhecer a referência futura |
+
+# Planta e modelo
+
+## Hardware
+
+- **Planta**: filtro Sallen-Key passa-baixas de 2ª ordem, ganho unitário (*pocket-lab* do TCC
+  de Raissa S. T. Paiva, UFPA, 2025), com componentes medidos $R_1 \approx 984\ \Omega$,
+  $R_2 \approx 9{,}88$ kΩ, $C_1 \approx 3{,}303$ µF, $C_2 \approx 3{,}353$ µF e amp-op LM358;
+- **Controlador**: LAUNCHXL-F28379D, entrada da planta pelo DACOUTA (J3.30), saída lida no
+  ADCINA3 (J3.26), $V_{REFHI} = 3{,}0$ V, $T_s = 5$ ms;
+- **Atraso**: $y(k)$ é lido **antes** de $u(k)$ ser escrito no DAC — $u(k)$ só afeta $y(k+1)$;
+- **Saturação**: o LM358 é alimentado com 3,3 V pela LaunchPad, e sua saída útil vai de ~0,2 a
+  ~1,7 V. Nas simulações, $u \in [0;\ 1{,}7]$ V.
+
+## Modelo físico com os componentes medidos
+
+$$
+H(s) = \frac{1/(R_1R_2C_1C_2)}{s^2 + \left(\frac{1}{R_1C_1} + \frac{1}{R_2C_2}\right)s + \frac{1}{R_1R_2C_1C_2}}
+     = \frac{9288}{s^2 + 337{,}9\,s + 9288},
+$$
+
+com polos reais em $s \approx -30{,}2$ e $-307{,}7$ rad/s ($\tau_1 \approx 33{,}1$ ms e
+$\tau_2 \approx 3{,}25$ ms).
+
+## Modelo ARX identificado (Nota 02)
+
+Em variáveis de desvio em torno de $u_{op} = 1{,}0$ V e $y_{op} = 0{,}998$ V:
+
+$$
+\tilde y(k) = 0{,}8156\,\tilde y(k-1) + 0{,}1150\,\tilde u(k-1) + 0{,}0585\,\tilde u(k-2) + 0{,}0078\,\tilde u(k-3)
+$$
+
+$$
+G(z) = \frac{B(z^{-1})}{A(z^{-1})} = \frac{z^{-1}\,(0{,}1150 + 0{,}0585\,z^{-1} + 0{,}0078\,z^{-2})}{1 - 0{,}8156\,z^{-1}},
+\qquad K = \frac{\sum b_j}{1 - a_1}.
+$$
+
+Ganho estático: $K$ = `{python} br(cs.K_EST, 3)`.
+
+Polo em $z = 0{,}8156$ ($\tau = -T_s/\ln z \approx 24{,}5$ ms), zeros em $-0{,}254 \pm j0{,}056$.
+Nas simulações, o modelo é usado em variáveis absolutas, com um termo constante
+$c_0 = y_{op}(1 - a_1) - u_{op}\sum b_j$ que reproduz o ponto de operação:
+$y(k) = a_1 y(k-1) + \sum b_j u(k-j) + c_0$. Com $u = 1{,}7$ V, a saída máxima é
+$y_{max}$ ≈ `{python} br(cs.K_EST * 1.7 + cs.C0 / (1 - cs.A1), 3)` V.
+
+::: {.callout-important}
+## Por que o τ identificado (24,5 ms) é menor que o τ físico (33 ms)?
+
+A explicação "o ARX(1,3) absorve o polo rápido no numerador" é **verdadeira quanto à estrutura**:
+o ARX(1,3,1) tem um único polo, e os termos $b_2, b_3$ representam o polo rápido, que se acomoda
+quase todo dentro de uma amostra. Mas ela **não explica a diferença de τ**:
+
+| Modelo | $\tau_1$ (ms) | $\tau_2$ (ms) | FIT no degrau |
+|---|---|---|---|
+| Físico, componentes medidos | 33,1 | 3,25 | ≈ 80 % |
+| 2ª ordem ajustado ao degrau (Nota 02) | 26,1 | 1,5 | (ajuste) |
+| ARX(2,2,1) — modela os **dois** polos | 24,5 | 2,25 | 91,5 % |
+| ARX(1,3,1) — um polo | 24,5 | — | 90,7 % |
+
+O ARX(2,2,1), que tem polo próprio para a dinâmica rápida, dá o **mesmo** $\tau_1 = 24{,}5$ ms, e o
+ajuste direto ao degrau dá 26 ms. Portanto **a planta real é mais rápida que o modelo físico**,
+independentemente da estrutura ARX. Com os componentes medidos, as tolerâncias também não
+explicam. Hipóteses a verificar: (i) o comportamento do LM358 alimentado em 3,3 V, próximo do
+limite da faixa de modo comum de entrada ($\approx V_{CC} - 1{,}5$ V); (ii) a carga de ≈ 1 kΩ no
+DACOUTA, que pode fazer a tensão realmente aplicada diferir do valor comandado; (iii) a
+capacitância efetiva dos eletrolíticos em operação. Um teste simples: medir a tensão real do
+DACOUTA, que no F2837xD compartilha o pino com o ADCINA0, com um segundo SOC do ADC.
+
+Para o controle, isso não muda nada: **projeta-se com o modelo que reproduz os dados** (ARX,
+FIT ≈ 98,7 % na validação), não com o modelo físico.
+:::
+
+## Planta de simulação
+
+Todas as simulações usam o ARX(1,3,1) em variáveis absolutas, com:
+
+- atraso de uma amostra (estrutura do próprio ARX: $u(k)$ entra em $y(k+1)$);
+- saturação $u \in [0;\ 1{,}7]$ V aplicada ao comando;
+- ruído de medida gaussiano com desvio de 1,9 mV (medido nos ensaios da Nota 02) e quantização
+  do ADC de 12 bits ($3{,}0/4095 \approx 0{,}73$ mV).
+
+As métricas de rastreamento ($t_s$, sobressinal, erro em regime, IAE) são calculadas na
+simulação **sem ruído**; as de esforço de controle (desvio padrão e variação total de u), na
+simulação **com ruído**, que é o que a placa verá.
+
+# Especificação e ensaios-padrão
+
+**Especificação comum**: acomodação (faixa de 2 %) entre **50 e 60 ms**, **sem sobressinal**. A
+planta em malha aberta acomoda em ≈ 110–125 ms: a malha fechada deve ser cerca de duas vezes
+mais rápida.
+
+```{python}
+#| label: fig-referencias
+#| fig-cap: "Referências dos ensaios. A: onda quadrada 0,8 ↔ 1,2 V (meio período de 250 ms). B: degrau para 1,75 V — acima do alcançável (1,686 V) — e retorno a 1,0 V."
+fig, (a, b) = plt.subplots(1, 2, figsize=(9, 2.6))
+t = np.arange(len(rA)) * TS; a.step(t, rA, where="post", color=AZUL); a.set_title("Referência A (rastreamento)")
+t = np.arange(len(rB)) * TS; b.step(t, rB, where="post", color=VERMELHO); b.set_title("Referência B (saturação)")
+b.axhline(cs.K_EST * 1.7 + cs.C0 / (1 - cs.A1), color="k", ls=":", lw=1.8)
+b.text(0.05, 1.70, "y máx ≈ 1,686 V", fontsize=9)
+for ax in (a, b):
+    ax.set_xlabel("t (s)"); ax.set_ylabel("r (V)")
+fig.tight_layout()
+```
+
+| Referência | Descrição | Amostras | Uso |
+|---|---|---|---|
+| **A** | 20 amostras em 0,8 V, depois onda quadrada 1,2 ↔ 0,8 V, troca a cada 50 amostras | 220 | rastreamento (todos os ensaios) |
+| **B** | 0,8 V → 1,75 V em $k = 20$ → 1,0 V em $k = 140$ | 240 | saturação e *windup* (ensaios 2, 3, 7 e 9) |
+
+A referência B pede uma saída **inatingível**: com $u = 1{,}7$ V a planta chega só a 1,686 V. O
+erro não zera enquanto ela dura — é a situação clássica de *windup*.
+
+**Métricas**: $t_s$ e sobressinal no primeiro degrau de subida da referência A ($k = 20$);
+erro em regime no fim desse patamar; $\text{IAE} = T_s\sum|r - y|$ no ensaio todo; desvio padrão
+de $u$ nas últimas 20 amostras do patamar (efeito do ruído); variação total
+$\text{TV} = \sum|u(k) - u(k-1)|$ (esforço e "nervosismo" do atuador); tempo de cálculo
+estimado para os preditivos.
+
+# Ensaio 1 — Controlador P
+
+**Objetivo didático.** Mostrar que, numa planta **tipo 0** (sem integrador), o controle
+proporcional deixa **erro em regime**, que diminui com $K_p$ mas não zera — e que aumentar
+$K_p$ cobra o preço em sobressinal e em ruído na ação de controle.
+
+**Projeto.** Lei com polarização no ponto de operação:
+
+$$
+u(k) = u_0 + K_p\,e(k), \qquad e(k) = r(k) - y(k), \qquad u_0 = 1{,}0\ \text{V}.
+$$
+
+Em regime, $\tilde y = K\,K_p\,(\tilde r - \tilde y)$, logo o erro relativo é
+
+$$
+\frac{e_{\infty}}{\tilde r} = \frac{1}{1 + K K_p} = \frac{1}{1 + 0{,}983\,K_p},
+$$
+
+com $\tilde r = r - y_{op}$: como a referência A é simétrica em torno de ≈ 1,0 V, o erro em cada
+patamar é $\approx \pm 0{,}2/(1 + 0{,}983 K_p)$ V.
+
+```{python}
+#| label: fig-p
+#| fig-cap: "Ensaio 1 — P puro com três ganhos: o erro em regime diminui, mas não some; com Kp = 4 aparece sobressinal."
+ganhos_p = [1.0, 2.0, 4.0]
+sims_p = {f"Kp = {br(k, 0)}": roda(lambda k=k: cs.P(k), rA) for k in ganhos_p}
+fig = figura(sims_p, "Ensaio 1 — controlador P")
+```
+
+```{python}
+linhas = []
+for k, (nome, s) in zip(ganhos_p, sims_p.items()):
+    e_teo = (1.2 - cs.Y_OP) / (1 + cs.K_EST * k)
+    m0 = cs.metricas(s["sem_ruido"])
+    linhas.append(f"| {br(k, 0)} | {br(1e3 * e_teo, 0)} | {br(1e3 * m0['ess'], 0)} | "
+                  f"{br(100 / (1 + cs.K_EST * k), 0)} % | {ms(m0['ts'])} | {br(m0['os'], 1)} | "
+                  f"{br(1e3 * cs.metricas(s)['std_u'], 1)} |")
+Markdown("| $K_p$ | erro teórico (mV) | erro simulado (mV) | $1/(1+KK_p)$ | $t_s$ (ms) | sobressinal (%) | desvio de u (mV) |\n"
+         "|---|---|---|---|---|---|---|\n" + "\n".join(linhas))
+```
+
+O erro simulado bate com $0{,}2/(1+0{,}983K_p)$. O tempo de acomodação ($t_s$) é medido em
+relação ao **valor final da própria saída**, que não é a referência. Com $K_p = 4$, o atraso de
+uma amostra e os zeros do ARX produzem sobressinal, e o ruído em $u$ cresce com $K_p$: não dá
+para "comprar" erro pequeno só com ganho.
+
+**Firmware**: `modo = 1`; `Kp` ∈ {1, 2, 4}; `u0 = 1.0`. **Arquivos**: `e01_p_kp1_sk03.csv`,
+`e01_p_kp2_sk03.csv`, `e01_p_kp4_sk03.csv` (referência A).
+
+# Ensaio 2 — PI sem anti-windup
+
+**Objetivo didático.** O integrador zera o erro em regime. Mas, quando o atuador satura e o erro
+persiste, o integrador continua acumulando (*windup*): quando a referência volta, o comando fica
+"preso" na saturação até o integrador descarregar.
+
+**Projeto (cancelamento do polo).** PI em forma de posição, com integrador retangular:
+
+$$
+u(k) = K_p\,e(k) + I(k), \qquad I(k+1) = I(k) + K_i T_s\, e(k)
+\;\;\Rightarrow\;\;
+C(z) = K_p + \frac{K_i T_s}{z - 1} = K_p\,\frac{z - z_c}{z - 1}, \quad z_c = 1 - \frac{K_i T_s}{K_p}.
+$$
+
+Colocando o zero sobre o polo da planta, $z_c = a_1 = 0{,}8156$:
+
+$$
+K_i = \frac{K_p\,(1 - a_1)}{T_s}
+\quad\Rightarrow\quad
+L(z) = C(z)\,G(z) = K_p\,\frac{0{,}1150\,z^2 + 0{,}0585\,z + 0{,}0078}{z^2\,(z - 1)}.
+$$
+
+Sobra um único parâmetro, $K_p$, ajustado pela especificação:
+
+```{python}
+linhas = []
+for kp in [1.0, 1.25, 1.5, 1.75, 2.0, 2.5]:
+    ki = kp * (1 - cs.A1) / TS
+    m0 = cs.metricas(cs.simula(cs.PID(kp, ki), rA, ruido=False))
+    dest = "**" if kp == 1.5 else ""
+    linhas.append(f"| {dest}{br(kp, 2)}{dest} | {br(ki, 1)} | {ms(m0['ts'])} | {br(m0['os'], 1)} |")
+Markdown("| $K_p$ | $K_i$ (s⁻¹) | $t_s$ (ms) | sobressinal (%) |\n|---|---|---|---|\n" + "\n".join(linhas))
+```
+
+```{python}
+KP_PI = 1.5
+KI_PI = KP_PI * (1 - cs.A1) / TS
+TI_PI = KP_PI / KI_PI
+```
+
+Escolha: $K_p$ = `{python} br(KP_PI, 2)`, $K_i$ = `{python} br(KI_PI, 2)` s⁻¹
+($T_i = K_p/K_i$ = `{python} br(1e3 * TI_PI, 1)` ms — próximo de τ, como esperado de um
+cancelamento).
+
+```{python}
+#| label: fig-pi
+#| fig-cap: "Ensaio 2 — PI sem anti-windup. Esquerda: referência A (atende a especificação). Direita: referência B — o integrador acumula enquanto a saída não alcança 1,75 V, e u fica preso em 1,7 V depois que a referência desce."
+s_pi = roda(lambda: cs.PID(KP_PI, KI_PI), rA)
+s_pi_b = roda(lambda: cs.PID(KP_PI, KI_PI), rB)
+fig, eixos = plt.subplots(2, 2, figsize=(10, 5.2), sharex="col", gridspec_kw={"height_ratios": [3, 2]})
+for col, s in enumerate([s_pi, s_pi_b]):
+    eixos[0, col].step(s["t"], s["r"], where="post", color="k", ls="--", lw=1.8, label="r")
+    eixos[0, col].plot(s["t"], s["y"], color=AZUL, lw=1.6, label="y")
+    eixos[1, col].step(s["t"], s["u"], where="post", color=AZUL, lw=1.8, label="u")
+    eixos[1, col].step(s["t"], s["v"], where="post", color=VERMELHO, lw=1.8, ls="--", label="comando antes da saturação")
+    eixos[1, col].axhline(cs.U_MAX, color="k", ls=":", lw=0.8)
+    eixos[1, col].set_xlabel("t (s)")
+eixos[0, 0].set_ylabel("y (V)"); eixos[1, 0].set_ylabel("u (V)")
+eixos[0, 0].legend(fontsize=9); eixos[1, 1].legend(fontsize=8, loc="upper right")
+eixos[1, 1].set_ylim(0, 3.2)
+fig.tight_layout()
+```
+
+```{python}
+def preso(s, k0=140):
+    k = k0
+    while k < len(s["u"]) and s["u"][k] >= cs.U_MAX - 1e-9:
+        k += 1
+    return (k - k0) * TS
+
+def linha_sat(nome, s):
+    s0 = s["sem_ruido"]
+    m = cs.metricas_degrau(s0, 140, 240)
+    return (f"| {nome} | {ms(preso(s0))} | {ms(m['ts'])} | {br(m['os'], 1)} | "
+            f"{br(1e3 * np.sum(np.abs(s0['r'] - s0['y'])) * TS, 1)} | {br(s0['v'].max(), 2)} |")
+
+CAB_SAT = ("| Controlador | u preso em 1,7 V após a descida (ms) | $t_s$ da descida (ms) | "
+           "sobressinal (%) | IAE (mV·s) | maior comando calculado (V) |\n|---|---|---|---|---|---|")
+Markdown(CAB + "\n" + linha_metricas("PI (ref. A)", s_pi) + "\n\n" + CAB_SAT + "\n" + linha_sat("PI sem anti-windup (ref. B)", s_pi_b))
+```
+
+**O que dá errado.** Na referência B, o comando calculado passa muito de 1,7 V: o integrador
+continua somando um erro que o atuador não consegue eliminar. Quando a referência desce para
+1,0 V, $u$ fica preso na saturação até o integrador "descarregar", e a descida demora quase três
+vezes mais do que na referência A.
+
+**Firmware**: `modo = 2`; `Kp = 1.5`; `Ki = 55.33` (ou `r0 = 1.5`, `r1 = −1.2234` na forma
+incremental, ensaio 6). **Arquivos**: `e02_pi_sk03.csv` (A), `e02_pi_windup_sk03.csv` (B).
+
+# Ensaio 3 — PI com anti-windup
+
+**Objetivo didático.** Mesma situação do ensaio 2, corrigida. Comparar duas estratégias.
+
+**Projeto.** Mesmos $K_p$ e $K_i$. Seja $v(k) = K_p e(k) + I(k)$ o comando calculado e
+$u(k) = \text{sat}(v(k))$ o aplicado.
+
+- **Integração condicional**: não integrar quando o comando está saturado *e* o erro empurra
+  ainda mais para a saturação:
+  $$
+  I(k+1) = \begin{cases} I(k), & (v > u_{max} \wedge e > 0) \vee (v < u_{min} \wedge e < 0)\\
+  I(k) + K_i T_s e(k), & \text{caso contrário.}\end{cases}
+  $$
+- **Retrocálculo** (*back-calculation*): realimentar a diferença entre o aplicado e o calculado,
+  $$
+  I(k+1) = I(k) + K_i T_s\, e(k) + \frac{T_s}{T_t}\,\big[u(k) - v(k)\big], \qquad T_t = T_i = K_p/K_i.
+  $$
+
+```{python}
+#| label: fig-aw
+#| fig-cap: "Ensaio 3 — referência B: sem anti-windup, com integração condicional e com retrocálculo."
+sims_aw = {
+    "sem anti-windup": s_pi_b,
+    "integração condicional": roda(lambda: cs.PID(KP_PI, KI_PI, aw="condicional"), rB),
+    "retrocálculo (Tt = Ti)": roda(lambda: cs.PID(KP_PI, KI_PI, aw="retrocalculo"), rB),
+}
+fig = figura(sims_aw, "Ensaio 3 — anti-windup (referência B)")
+```
+
+```{python}
+s_aw_a = roda(lambda: cs.PID(KP_PI, KI_PI, aw="retrocalculo"), rA)
+Markdown(CAB_SAT + "\n" + "\n".join(linha_sat(n, s) for n, s in sims_aw.items())
+         + "\n\nNa referência A não há saturação: com anti-windup a resposta é **idêntica** à do ensaio 2.\n\n"
+         + CAB + "\n" + linha_metricas("PI + retrocálculo (ref. A)", s_aw_a))
+```
+
+Com anti-windup, $u$ sai da saturação **imediatamente** quando a referência desce, e a descida
+acomoda no mesmo tempo que na referência A. O retrocálculo dá o menor IAE; a integração
+condicional é a mais simples de implementar (só um `if`).
+
+**Firmware**: `modo = 3`; `aw` ∈ {0 = nenhum, 1 = condicional, 2 = retrocálculo};
+`Tt = 0.0271` s. **Arquivos**: `e03_pi_cond_sk03.csv`, `e03_pi_retro_sk03.csv` (B) e
+`e03_pi_retro_A_sk03.csv` (A, verificação).
+
+# Ensaio 4 — PID ideal
+
+**Objetivo didático.** Mostrar os dois defeitos clássicos da derivada pura do erro: o **chute
+derivativo** a cada mudança de referência e a **amplificação do ruído** do ADC na ação de
+controle.
+
+**Projeto (IMC, com os dois polos).** É o projeto "de livro" que um aluno faria: cancelar os
+dois polos com um PID e impor malha fechada de 1ª ordem com constante λ. Com
+$\tau_1 = 24{,}5$ ms (ARX) e $\tau_2 = 2{,}25$ ms (polo rápido do ARX(2,2,1) da Nota 02):
+
+$$
+K_p = \frac{\tau_1 + \tau_2}{K\lambda},\qquad
+T_i = \tau_1 + \tau_2,\qquad
+T_d = \frac{\tau_1\tau_2}{\tau_1 + \tau_2},\qquad
+K_i = \frac{K_p}{T_i},\quad K_d = K_p T_d,
+$$
+
+$$
+u(k) = K_p\,e(k) + I(k) + K_d\,\frac{e(k) - e(k-1)}{T_s}.
+$$
+
+```{python}
+T1, T2, LAMB = 0.02453, 0.00225, 0.018
+KP_D = (T1 + T2) / (cs.K_EST * LAMB); KI_D = KP_D / (T1 + T2); KD_D = KP_D * T1 * T2 / (T1 + T2)
+TD_D = KD_D / KP_D
+```
+
+Com λ = 18 ms (escolhido pela especificação): $K_p$ = `{python} br(KP_D, 3)`,
+$K_i$ = `{python} br(KI_D, 1)` s⁻¹, $K_d$ = `{python} br(1e3 * KD_D, 3)` × 10⁻³ s
+($T_d$ = `{python} br(1e3 * TD_D, 2)` ms). Na forma discreta, o peso do termo derivativo é
+$K_d/T_s$ = `{python} br(KD_D / TS, 3)`.
+
+```{python}
+#| label: fig-pid
+#| fig-cap: "Ensaio 4 — PI (ensaio 2) × PID ideal na referência A. O PID ideal dá picos em u a cada troca da referência (chute derivativo) e u mais ruidoso, sem acelerar a resposta."
+s_pid = roda(lambda: cs.PID(KP_D, KI_D, KD_D), rA)
+fig = figura({"PI": s_pi, "PID ideal": s_pid}, "Ensaio 4 — PID ideal", janela=(0, 0.6))
+```
+
+```{python}
+Markdown(CAB + "\n" + linha_metricas("PI (ensaio 2)", s_pi) + "\n" + linha_metricas("PID ideal", s_pid)
+         + f"\n\nChute: o comando chega a {br(s_pid['v'].max(), 2)} V contra {br(s_pi['v'].max(), 2)} V do PI; "
+           f"o salto extra em $u$ na troca de referência vale $(K_d/T_s)\\,\\Delta r = "
+           f"{brm(KD_D / TS, 3)} \\times 0{{,}}4 = {brm(KD_D / TS * 0.4, 2)}$ V.")
+```
+
+**O que dá errado.** A derivada do erro "vê" a mudança instantânea de $r$ como uma variação
+infinita da saída: aparece um pico em $u$ (aqui perto da saturação). O termo
+$K_d/T_s\,[e(k) - e(k-1)]$ diferencia o ruído do ADC: o desvio de $u$ e a variação total
+aumentam cerca de 70 %. E o IAE **não melhora** em relação ao PI.
+
+**Firmware**: `modo = 4`; `Kp = 1.513`, `Ki = 56.5`, `Kd = 0.00312`. **Arquivo**:
+`e04_pid_ideal_sk03.csv`.
+
+# Ensaio 5 — PID com filtro e derivada na medida
+
+**Objetivo didático.** Corrigir os defeitos do ensaio 4 e perceber que, **nesta planta**, o
+termo derivativo quase não traz ganho de desempenho.
+
+**Projeto.** Mesmos $K_p, K_i, K_d$; derivada **só da medida** (sem chute) e filtrada:
+
+$$
+D(k) = \frac{T_f}{T_f + T_s}\,D(k-1) - \frac{K_d}{T_f + T_s}\,\big[y(k) - y(k-1)\big],
+\qquad u(k) = K_p e(k) + I(k) + D(k),
+$$
+
+com anti-windup por retrocálculo. A regra usual $T_f = T_d/N$ ($N$ = 5 a 20) **não serve**
+aqui: $T_d \approx 2$ ms já é menor que $T_s$, e $T_d/N$ seria uma fração de amostra — o filtro
+não filtraria nada. Usa-se $T_f = T_s = 5$ ms.
+
+```{python}
+#| label: fig-pidf
+#| fig-cap: "Ensaio 5 — PID ideal × PID com derivada filtrada na medida × PI. Sem o chute e com menos ruído, o PID filtrado fica praticamente igual ao PI."
+s_pidf = roda(lambda: cs.PID(KP_D, KI_D, KD_D, Tf=TS, d_medida=True, aw="retrocalculo"), rA)
+fig = figura({"PI": s_pi, "PID ideal": s_pid, "PID filtrado, D na medida": s_pidf},
+             "Ensaio 5 — PID com filtro e derivada na medida", janela=(0, 0.6))
+```
+
+```{python}
+s_pi17 = roda(lambda: cs.PID(1.7, 1.7 * (1 - cs.A1) / TS), rA)
+Markdown(CAB + "\n" + "\n".join([linha_metricas("PI (ensaio 2)", s_pi), linha_metricas("PID ideal", s_pid),
+                                 linha_metricas("PID filtrado, D na medida", s_pidf),
+                                 linha_metricas("PI com Kp = 1,7 (sem derivada)", s_pi17)]))
+```
+
+**Por que o ganho é pequeno.** A planta é **essencialmente de 1ª ordem dominante**: o polo rápido
+($\tau_2 \approx 2$–3 ms) é menor que **meio período de amostragem** — em $z$, ele está em
+$e^{-T_s/\tau_2} \approx 0{,}1$, quase na origem. Não há dinâmica lenta "extra" para o derivativo
+cancelar; o que ele poderia acelerar acontece **entre** duas amostras, onde o controlador não
+age. O PI com zero sobre o polo dominante já faz o essencial. Para ir mais rápido, sai mais barato
+aumentar o ganho do PI (última linha) do que acrescentar a derivada — com o custo em ruído de
+qualquer aumento de ganho. Uma derivada útil exigiria $T_s \ll \tau_2$ (por exemplo, $T_s \le 0{,}5$ ms).
+
+**Firmware**: `modo = 5`; `Kp = 1.513`, `Ki = 56.5`, `Kd = 0.00312`, `Tf = 0.005`,
+`d_medida = 1`, `aw = 2`. **Arquivo**: `e05_pid_filtrado_sk03.csv`.
+
+# Ensaio 6 — Controladores na forma RST
+
+**Objetivo didático.** Reescrever P, PI e PID na forma **RST** e verificar que a resposta na
+placa é **idêntica** à da forma clássica. A forma RST é a estrutura comum dos ensaios 6 a 9.
+
+$$
+S(q^{-1})\,u(k) = T(q^{-1})\,r(k) - R(q^{-1})\,y(k).
+$$
+
+**Projeto.** Para o PI do ensaio 2 (forma incremental, $\Delta u(k) = r_0 e(k) + r_1 e(k-1)$):
+
+$$
+S = 1 - q^{-1},\qquad R = T = r_0 + r_1 q^{-1},\qquad r_0 = K_p,\quad r_1 = K_i T_s - K_p .
+$$
+
+Para o PID ideal do ensaio 4:
+
+$$
+S = 1 - q^{-1},\qquad R = T = \Big(K_p + \tfrac{K_d}{T_s}\Big) + \Big(K_i T_s - K_p - \tfrac{2K_d}{T_s}\Big)q^{-1} + \tfrac{K_d}{T_s}\,q^{-2}.
+$$
+
+O PID com derivada só na medida tem $T \neq R$ — a referência não passa pelo termo derivativo.
+
+```{python}
+R_pi, S_pi, T_pi = cs.pid_para_rst(KP_PI, KI_PI, 0)
+R_pd, S_pd, T_pd = cs.pid_para_rst(KP_D, KI_D, KD_D)
+d_pi = np.abs(cs.simula(cs.PID(KP_PI, KI_PI), rA, semente=7)["u"] - cs.simula(cs.RST(R_pi, S_pi, T_pi), rA, semente=7)["u"]).max()
+d_pd = np.abs(cs.simula(cs.PID(KP_D, KI_D, KD_D), rA, ruido=False)["u"] - cs.simula(cs.RST(R_pd, S_pd, T_pd), rA, ruido=False)["u"]).max()
+fmt = lambda p: " ".join(f"{c:+.5f}" for c in p)
+Markdown(f"""
+| Controlador | $R$ | $S$ | $T$ | máx. $|u_{{\\text{{clássico}}}} - u_{{RST}}|$ (V) |
+|---|---|---|---|---|
+| PI | `{fmt(R_pi)}` | `{fmt(S_pi)}` | `{fmt(T_pi)}` | {d_pi:.1e} |
+| PID ideal | `{fmt(R_pd)}` | `{fmt(S_pd)}` | `{fmt(T_pd)}` | {d_pd:.1e} |
+""")
+```
+
+A diferença é de arredondamento numérico: **as duas formas são o mesmo controlador**.
+
+::: {.callout-warning}
+## A forma RST esconde uma decisão sobre a saturação
+
+Na forma incremental, $u(k) = u(k-1) + r_0 e(k) + r_1 e(k-1)$. Qual $u(k-1)$ usar?
+
+- o **comando calculado** (não saturado) ⇒ é exatamente o PI **sem** anti-windup do ensaio 2;
+- o **valor aplicado** (saturado) ⇒ o PI ganha um anti-windup "de graça": o integrador não pode
+  acumular além do que o atuador aplicou.
+
+Na referência A não há saturação e as duas escolhas coincidem. Na referência B, elas
+reproduzem os ensaios 2 e 3. O firmware deve deixar essa escolha **explícita** (ensaio 7).
+:::
+
+```{python}
+s_rst_sem = cs.simula(cs.RST(R_pi, S_pi, T_pi), rB, ruido=False)
+s_rst_sat = cs.simula(cs.RST(R_pi, S_pi, T_pi, Ao=[1.0]), rB, ruido=False)
+iae = lambda s: br(1e3 * np.sum(np.abs(s["r"] - s["y"])) * TS, 1)
+Markdown(f"Referência B: RST com $u(k-1)$ calculado → IAE = {iae(s_rst_sem)} mV·s (igual ao ensaio 2); "
+         f"com $u(k-1)$ aplicado → IAE = {iae(s_rst_sat)} mV·s.")
+```
+
+**Firmware**: `modo = 6`; vetores `R[]`, `S[]`, `T[]` da tabela acima; `aw_rst` ∈ {0, 1}.
+**Arquivos**: `e06_rst_pi_sk03.csv`, `e06_rst_pid_sk03.csv` (A).
+
+# Ensaio 7 — RST por alocação de polos
+
+**Objetivo didático.** Projetar o RST diretamente pelos polos de malha fechada (equação
+diofantina), usar $T$ para **separar rastreamento de regulação** e implementar o anti-windup
+com um **polinômio observador**.
+
+**Projeto.** Planta $A = 1 - a_1 q^{-1}$, $B = q^{-1}(b_1 + b_2 q^{-1} + b_3 q^{-2})$. Para ter erro
+nulo, $S = (1 - q^{-1})\,S'$. A equação diofantina é
+
+$$
+A(q^{-1})\,(1 - q^{-1})\,S'(q^{-1}) + B(q^{-1})\,R(q^{-1}) = P(q^{-1}),
+$$
+
+com graus mínimos $\deg S' = \deg B - 1 = 2$, $\deg R = \deg[A(1-q^{-1})] - 1 = 1$ e
+$\deg P = 4$ — 4 incógnitas ($s'_1, s'_2, r_0, r_1$) para 4 coeficientes de $P$.
+
+Escolha de $P = P_d\,P_f$:
+
+- $P_d = 1 - p\,q^{-1}$: polo **dominante**, fixa o rastreamento. $t_s \approx 4\tau_{mf}$ mais uma
+  amostra de atraso; $p = 0{,}68$ ($\tau_{mf} \approx 13$ ms) dá $t_s \approx 55$ ms;
+- $P_f = (1 - \alpha q^{-1})^3$: polos **auxiliares** (do observador), fixam a regulação e a
+  sensibilidade ao ruído.
+
+Com $T = \beta\,P_f$ e $\beta = P_d(1)/B(1)$, a função de transferência de rastreamento é
+
+$$
+\frac{y}{r} = \frac{B\,T}{A S + B R} = \frac{\beta\,B\,P_f}{P_d\,P_f} = \frac{\beta\,B}{P_d}:
+$$
+
+os polos auxiliares **se cancelam** no rastreamento. $\alpha$ muda a rejeição de ruído e de
+perturbações sem mudar a resposta à referência.
+
+```{python}
+P_DOM, ALFA = 0.68, 0.5
+proj7 = cs.projeto_rst_alocacao(P_DOM, ALFA)
+fmt5 = lambda p: ", ".join(br(c, 5) for c in p)
+linhas = []
+for a in [0.0, 0.3, 0.5, 0.6]:
+    d = cs.projeto_rst_alocacao(P_DOM, a)
+    s = roda(lambda d=d: cs.RST(d["R"], d["S"], d["T"]), rA)
+    m0 = cs.metricas(s["sem_ruido"]); m = cs.metricas(s)
+    dest = "**" if a == ALFA else ""
+    linhas.append(f"| {dest}{br(a, 1)}{dest} | {ms(m0['ts'])} | {br(m0['os'], 1)} | {br(1e3 * m0['IAE'], 1)} | "
+                  f"{br(1e3 * m['std_u'], 1)} | {br(m['TV'], 2)} |")
+Markdown(f"""
+Coeficientes para $p = {brm(P_DOM, 2)}$, $\\alpha = {brm(ALFA, 1)}$:
+
+| Polinômio | Coeficientes ($q^0, q^{{-1}}, \\dots$) |
+|---|---|
+| $R$ | {fmt5(proj7['R'])} |
+| $S$ | {fmt5(proj7['S'])} |
+| $T$ | {fmt5(proj7['T'])} |
+| $P$ | {fmt5(proj7['P'])} |
+
+Efeito dos polos auxiliares $\\alpha$ (referência A):
+
+| $\\alpha$ | $t_s$ (ms) | sobressinal (%) | IAE (mV·s) | desvio de u (mV) | variação total de u (V) |
+|---|---|---|---|---|---|
+""" + "\n".join(linhas))
+```
+
+**O que observar.** O rastreamento ($t_s$, IAE) é **o mesmo** para qualquer $\alpha$: é o efeito
+de $T = \beta P_f$. Já o ruído em $u$ depende muito de $\alpha$: com os polos auxiliares na origem
+($\alpha = 0$, observador *deadbeat*), o desvio de $u$ é ~10 vezes maior. Polos auxiliares mais
+lentos filtram o ruído (e tornam a rejeição de perturbações mais lenta).
+
+**Anti-windup com polinômio observador.** Com $A_o = P_f$ (mônico, $\deg A_o = \deg S = 3$):
+
+$$
+A_o\,v = T\,r - R\,y + (A_o - S)\,u, \qquad u = \text{sat}(v).
+$$
+
+Sem saturação ($u = v$), isso é exatamente $S u = T r - R y$. Na saturação, a parte da lei que
+"lembra" o passado usa o $u$ realmente aplicado, filtrado pela dinâmica do observador.
+
+```{python}
+#| label: fig-rst
+#| fig-cap: "Ensaio 7 — RST por alocação de polos na referência B, sem e com anti-windup pelo polinômio observador."
+s7_a = roda(lambda: cs.RST(proj7["R"], proj7["S"], proj7["T"]), rA)
+sims7 = {"RST sem anti-windup": roda(lambda: cs.RST(proj7["R"], proj7["S"], proj7["T"]), rB),
+         "RST com anti-windup (Ao = Pf)": roda(lambda: cs.RST(proj7["R"], proj7["S"], proj7["T"], Ao=proj7["Pf"]), rB)}
+fig = figura(sims7, "Ensaio 7 — RST por alocação, referência B")
+```
+
+```{python}
+Markdown(CAB + "\n" + linha_metricas("RST alocação (ref. A)", s7_a) + "\n\n" + CAB_SAT + "\n"
+         + "\n".join(linha_sat(n, s) for n, s in sims7.items()))
+```
+
+**Firmware**: `modo = 7`; `R[2]`, `S[4]`, `T[4]`, `Ao[4]` da tabela; `aw_rst = 2` (observador).
+**Arquivos**: `e07_rst_aloc_sk03.csv` (A), `e07_rst_aloc_sat_sk03.csv` e
+`e07_rst_aloc_aw_sk03.csv` (B).
+
+# Ensaio 8 — GPC sem restrições
+
+**Objetivo didático.** Projetar um controlador **preditivo** (GPC) a partir do ARX e mostrar
+que, sem restrições, a lei resultante é **um RST** — com uma armadilha: o observador implícito
+do GPC "puro" é *deadbeat*, e o ruído em $u$ explode.
+
+**Modelo CARIMA.** A partir do ARX, com perturbação integrada:
+
+$$
+A(q^{-1})\,\Delta\,y(k) = B(q^{-1})\,\Delta u(k) + e(k), \qquad \Delta = 1 - q^{-1}.
+$$
+
+As predições $\hat y(k+j)$, $j = 1..N_p$, se separam em resposta forçada (pelos movimentos
+futuros) e resposta livre (pelo passado):
+
+$$
+\hat{\mathbf y} = \mathbf G\,\Delta\mathbf u + \mathbf f,
+\qquad \mathbf f = \mathbf F_y \begin{bmatrix} y(k)\\ y(k-1)\end{bmatrix} + \mathbf F_u \begin{bmatrix}\Delta u(k-1)\\ \Delta u(k-2)\end{bmatrix}.
+$$
+
+**Custo e solução.**
+
+$$
+J = \sum_{j=1}^{N_p}\big[\hat y(k+j) - w(k+j)\big]^2 + \lambda\sum_{j=0}^{N_u-1}\Delta u(k+j)^2
+\;\;\Rightarrow\;\;
+\Delta\mathbf u^* = (\mathbf G^\top\mathbf G + \lambda\mathbf I)^{-1}\mathbf G^\top(\mathbf w - \mathbf f),
+$$
+
+aplicando só o primeiro movimento. A trajetória de referência
+$w(k+j) = (1 - \alpha_r^j)\,r + \alpha_r^j\,y(k)$ suaviza a aproximação e elimina o sobressinal.
+
+```{python}
+NP, NU, LAM, AREF = 20, 3, 0.1, 0.65
+gpc = cs.MPC(NP, NU, LAM, AREF)
+R8, S8, T8 = gpc.como_rst()
+d8 = np.abs(cs.simula(cs.MPC(NP, NU, LAM, AREF), rA, semente=4)["u"] - cs.simula(cs.RST(R8, S8, T8), rA, semente=4)["u"]).max()
+C8 = cs.polimul(*[np.array([1.0, -0.5])] * 3)
+R8c, S8c, T8c, Pc8 = gpc.como_rst_com_C(C8)
+polos8 = np.roots(Pc8)
+```
+
+Sintonia: $N_p$ = `{python} str(NP)` (100 ms, cerca de 4τ), $N_u$ = `{python} str(NU)`,
+$\lambda$ = `{python} br(LAM, 1)`, $\alpha_r$ = `{python} br(AREF, 2)`.
+
+**A lei GPC é um RST.** Como $\Delta u(k) = \mathbf k_1^\top(\mathbf w - \mathbf f)$, sendo
+$\mathbf k_1^\top$ a primeira linha de $(\mathbf G^\top\mathbf G + \lambda\mathbf I)^{-1}\mathbf G^\top$,
+e $\mathbf f$ é linear em $y(k), y(k-1), \Delta u(k-1), \Delta u(k-2)$:
+
+$$
+\underbrace{(1 - q^{-1})(1 + h_1 q^{-1} + h_2 q^{-2})}_{S}\,u(k)
+= \underbrace{t_0}_{T}\,r(k) - \underbrace{(g_0 + g_1 q^{-1})}_{R}\,y(k),
+$$
+
+com $h_i = \mathbf k_1^\top\mathbf F_u$, $g_i = \mathbf k_1^\top\mathbf F_y$ (corrigido pela trajetória
+de referência) e $t_0 = \mathbf k_1^\top(1 - \alpha_r^j)$.
+
+```{python}
+s8_gpc = roda(lambda: cs.MPC(NP, NU, LAM, AREF), rA)
+s8_c = roda(lambda: cs.RST(R8c, S8c, T8c), rA)
+Markdown(f"""
+| | Coeficientes |
+|---|---|
+| $R$ | {fmt5(R8)} |
+| $S$ | {fmt5(S8)} |
+| $T$ | {fmt5(T8)} |
+| máx. $|u_{{GPC}} - u_{{RST}}|$ | {d8:.1e} V |
+| Polos de malha fechada ($AS + BR$) | {raizes(polos8)} |
+""")
+```
+
+**O que dá errado.** Os polos de malha fechada incluem um par em
+$z \approx -0{,}60 \pm j0{,}40$: parte real negativa significa alternância de sinal de uma
+amostra para a outra. É o observador implícito do GPC com $C = 1$ (*deadbeat*) — o mesmo
+efeito do $\alpha = 0$ do ensaio 7. Resultado: ruído enorme em $u$.
+
+**Correção: polinômio $C$.** Usando $C(q^{-1}) = (1 - 0{,}5\,q^{-1})^3$ como polinômio de
+observador (o "filtro T" do GPC), os polos de regulação passam a ser $P_c\cdot C$ e $T = t_0\,C$
+— o rastreamento não muda, e o ruído em $u$ cai mais de dez vezes. O par de polos de parte real
+negativa, porém, **continua no rastreamento**: logo após cada troca da referência, $u$ ainda
+alterna de uma amostra para a outra (figura abaixo). Isso se corrige na sintonia ($\lambda$,
+$N_u$, $\alpha_r$), não no observador.
+
+```{python}
+Markdown(CAB + "\n" + linha_metricas("GPC (C = 1)", s8_gpc) + "\n" + linha_metricas("GPC com C = (1 − 0,5q⁻¹)³", s8_c))
+```
+
+```{python}
+#| label: fig-gpc
+#| fig-cap: "Ensaio 8 — GPC sem e com polinômio C: mesma saída, ação de controle muito diferente."
+fig = figura({"GPC (C = 1)": s8_gpc, "GPC com C": s8_c}, "Ensaio 8 — GPC sem restrições", janela=(0, 0.6))
+```
+
+**Firmware**: `modo = 8`; lei RST genérica com os coeficientes do GPC com $C$ (calculados
+*offline* em Python e copiados para o WATCH). **Arquivos**: `e08_gpc_sk03.csv`,
+`e08_gpc_c_sk03.csv` (A).
+
+# Ensaio 9 — MPC com restrições
+
+**Objetivo didático.** Incluir as restrições do atuador **no** problema de otimização, em vez de
+recortar o comando depois: o controlador "planeja" respeitando os limites. Resolver um QP pequeno
+na própria placa e estimar se cabe em $T_s = 5$ ms.
+
+**Problema.** Mesmo custo do ensaio 8, sujeito a
+
+$$
+u_{min} \le u(k+j) \le u_{max},\qquad |\Delta u(k+j)| \le \Delta u_{max},\qquad j = 0..N_u-1,
+$$
+
+com $u(k+j) = u(k-1) + \sum_{l\le j}\Delta u(k+l)$. Na forma
+$\min \tfrac12\Delta\mathbf u^\top\mathbf H\Delta\mathbf u + \mathbf g^\top\Delta\mathbf u$ s.a.
+$\mathbf M\Delta\mathbf u \le \boldsymbol\gamma$, com $\mathbf H = \mathbf G^\top\mathbf G + \lambda\mathbf I$
+e $\mathbf g = \mathbf G^\top(\mathbf f - \mathbf w)$.
+
+**Método de Hildreth** (subida coordenada no dual): com $\mathbf P = \mathbf M\mathbf H^{-1}\mathbf M^\top$
+(constante, calculada *offline*) e $\mathbf d = \boldsymbol\gamma + \mathbf M\mathbf H^{-1}\mathbf g$,
+
+$$
+\lambda_i \leftarrow \max\!\Big(0,\; -\frac{d_i + \sum_{j\neq i} P_{ij}\lambda_j}{P_{ii}}\Big),
+\qquad \Delta\mathbf u = -\mathbf H^{-1}(\mathbf g + \mathbf M^\top\boldsymbol\lambda).
+$$
+
+Detalhes que a simulação mostrou serem necessários:
+
+1. Se a solução sem restrições já é viável, nenhuma iteração é necessária (o caso mais comum);
+2. a restrição em $u(k)$ e a em $\Delta u(k)$ são **paralelas**: deixadas separadas, tornam o dual
+   degenerado e o Hildreth não converge. O primeiro movimento fica só com
+   $\Delta u(k) \le \min(\Delta u_{max},\ u_{max} - u(k-1))$ (e o análogo inferior);
+3. com várias restrições ativas ao mesmo tempo, o Hildreth converge **devagar** (dual mal
+   condicionado). Usa-se partida a quente (os $\lambda$ da amostra anterior), um limite fixo de
+   iterações e, por segurança, recorta-se o primeiro movimento aos limites.
+
+```{python}
+DUMAX, AOBS, ITMAX = 0.10, 0.6, 100
+mk = lambda **kw: (lambda: cs.MPC(NP, NU, LAM, AREF, alfa_obs=AOBS, max_iter=ITMAX, **kw))
+s9 = {"GPC (comando recortado)": roda(mk(), rB),
+      "MPC: u ∈ [0; 1,7]": roda(mk(restrito=True), rB),
+      "MPC: u e |Δu| ≤ 0,1 V": roda(mk(restrito=True, dumax=DUMAX), rB)}
+s9a = roda(mk(restrito=True, dumax=DUMAX), rA)
+```
+
+O ruído é tratado como no ensaio 8, agora com um **observador de estado** para
+$[y(k),\ y(k-1)]$ com polos em $\alpha_o$ = `{python} br(AOBS, 1)`, que faz o papel do polinômio
+$C$ quando há restrições (a lei deixa de ser um RST fixo).
+
+```{python}
+#| label: fig-mpc
+#| fig-cap: "Ensaio 9 — referência B: GPC com o comando recortado × MPC com restrição em u × MPC com restrições em u e Δu."
+fig = figura(s9, "Ensaio 9 — MPC com restrições (referência B)")
+```
+
+```{python}
+def it_max(fab, r):
+    c = fab(); cs.simula(c, r); return max(c.iters), c
+
+linhas_t = []
+for nome, fab, r in [("MPC u (ref. B)", mk(restrito=True), rB),
+                     ("MPC u e Δu (ref. A)", mk(restrito=True, dumax=DUMAX), rA),
+                     ("MPC u e Δu (ref. B)", mk(restrito=True, dumax=DUMAX), rB)]:
+    it, c = it_max(fab, r)
+    ciclos = c.custo_ciclos(it)
+    milhar = f"{ciclos:,}".replace(",", ".")
+    linhas_t.append(f"| {nome} | {c.M.shape[0]} | {it} | {br(np.mean(c.iters), 1)} | {milhar} | "
+                    f"{br(ciclos / 200e6 * 1e3, 3)} | {br(100 * ciclos / 200e6 / TS, 1)} % |")
+Markdown(CAB_SAT + "\n" + "\n".join(linha_sat(n, s) for n, s in s9.items())
+         + "\n\n" + CAB + "\n" + linha_metricas("MPC u e Δu (ref. A)", s9a, tcalc="ver abaixo")
+         + "\n\n| Caso | restrições | iterações (máx.) | iterações (média) | ciclos estimados | tempo (ms) | fração de $T_s$ |\n"
+           "|---|---|---|---|---|---|---|\n" + "\n".join(linhas_t))
+```
+
+**Tempo de cálculo.** Estimativa conservadora: cada multiplicação-acumulação em ponto flutuante
+custa ~5 ciclos no C28x a 200 MHz (com acessos à memória). O pior caso — o limite de 100
+iterações do Hildreth — dá ~0,26 ms, **≈ 5 % de $T_s$**: cabe com folga. Na média, a maioria das
+amostras não precisa de nenhuma iteração. A medida real deve ser feita na placa (ver firmware).
+
+**O que observar.** A restrição em $u$ quase não muda o resultado em relação a recortar o comando
+do GPC (a forma incremental já se comporta bem na saturação, como no ensaio 6). A restrição em
+$\Delta u$ muda o comportamento: as subidas viram rampas de 0,1 V por amostra, a resposta fica mais
+lenta e o atuador menos "nervoso".
+
+**Firmware**: `modo = 9`; `Np = 20`, `Nu = 3`, `lambda = 0.1`, `alfa_ref = 0.65`,
+`alfa_obs = 0.6`, `dumax = 0.1`, `iter_max = 100`; matrizes $\mathbf G$, $\mathbf F_y$, $\mathbf F_u$,
+$\mathbf H^{-1}$, $\mathbf M$ e $\mathbf P$ geradas em Python e gravadas num `.h`. **Arquivos**:
+`e09_mpc_sk03.csv` (A), `e09_mpc_sat_sk03.csv` (B).
+
+# Ensaio 10 — MPC antecipatório (*preview*)
+
+**Objetivo didático.** Dar ao MPC a **referência futura** ao longo do horizonte,
+$w(k+j) = r(k+j)$, e comparar com o MPC que assume a referência constante, $w(k+j) = r(k)$. A
+saída passa a se mover **antes** da troca da referência.
+
+```{python}
+#| label: fig-preview
+#| fig-cap: "Ensaio 10 — MPC com referência constante × MPC antecipatório (Np = 5 e Np = 20), primeiro degrau da referência A."
+mkp = lambda Np, pv: (lambda: cs.MPC(Np, min(NU, Np), LAM, AREF, alfa_obs=AOBS, restrito=True, dumax=DUMAX, preview=pv, max_iter=ITMAX))
+s10 = {"referência constante (Np = 20)": roda(mkp(20, False), rA),
+       "antecipatório, Np = 5": roda(mkp(5, True), rA),
+       "antecipatório, Np = 20": roda(mkp(20, True), rA)}
+fig = figura(s10, "Ensaio 10 — MPC antecipatório", janela=(0, 0.45))
+```
+
+```{python}
+linhas = []
+for Np in [5, 10, 20, 30]:
+    for pv in [False, True]:
+        s = roda(mkp(Np, pv), rA); s0 = s["sem_ruido"]
+        k_ant = next((k for k in range(0, 40) if abs(s0["y"][k] - 0.8) > 0.002), None)
+        antec = (20 - k_ant) * TS if k_ant is not None and k_ant < 20 else 0.0
+        e_max = np.abs(s0["r"] - s0["y"]).max()
+        linhas.append(f"| {Np} | {'antecipatório' if pv else 'constante'} | {br(1e3 * np.sum(np.abs(s0['r'] - s0['y'])) * TS, 1)} | "
+                      f"{ms(antec)} | {br(1e3 * e_max, 0)} | {br(cs.metricas(s)['TV'], 2)} |")
+Markdown("| $N_p$ | referência | IAE (mV·s) | antecipação (ms) | maior erro (mV) | variação total de u (V) |\n"
+         "|---|---|---|---|---|---|\n" + "\n".join(linhas))
+```
+
+**O que observar.**
+
+- Com antecipação, $u$ começa a subir **antes** da troca: o IAE cai pela metade com $N_p = 5$ e
+  o maior erro diminui.
+- **Horizonte**: o MPC antecipa até $N_p$ amostras. Com $N_p$ grande, a saída começa a se mover
+  cedo demais (com $N_p = 20$, ~95 ms antes): o custo troca erro *depois* da troca por erro
+  *antes* dela, e o IAE volta a subir. Com $N_p = 20$ aparecem ainda movimentos estranhos: a
+  saída primeiro **desce** um pouco antes de subir, e ondula no patamar ao "ver" a descida
+  seguinte — o otimizador está distribuindo o erro ao longo de todo o horizonte. O melhor horizonte de antecipação é da ordem da
+  constante de tempo de malha fechada, não da planta.
+- **Quando é realista**: só quando a trajetória é **conhecida de antemão** — perfis programados
+  (rampas de temperatura, trajetórias de robôs, ciclos de ensaio, perfis de tensão de
+  conversores). Para uma referência dada por um operador em tempo real, não há futuro para
+  conhecer.
+
+**Firmware**: `modo = 10`; mesmos parâmetros do ensaio 9, mais `preview = 1` e a referência
+gerada a partir de uma **tabela** em memória (o firmware precisa de $r(k+1..k+N_p)$).
+**Arquivos**: `e10_mpc_const_sk03.csv`, `e10_mpc_preview_np5_sk03.csv`,
+`e10_mpc_preview_np20_sk03.csv` (A).
+
+# Planejamento do firmware — projeto `SK03Controle`
+
+Só a especificação; o código vem depois.
+
+## Organização
+
+| Arquivo | Conteúdo |
+|---|---|
+| `main.c` | enxuto: inicialização, registro da ISR, laço de fundo vazio |
+| `perifericos.c/.h` | DAC, ADC e CPU Timer 0 — **os mesmos** do `SK01Degrau`/`SK02PRBS`, já validados |
+| `controle.c/.h` | geração de referência, leis de controle (P/PI/PID, RST genérico, MPC), saturação, gravação |
+| `tarefas.c/.h` | (depois) tarefas de fundo: comunicação serial, medição de tempo, troca de perfis |
+| `mpc_coef.h` | matrizes do MPC geradas em Python (`analise/`) |
+
+## Seleção do ensaio pelo WATCH
+
+- `volatile uint16_t modo;` — 0 = malha aberta (u = 1,0 V), 1 = P, 2 = PI, 3 = PI+AW,
+  4 = PID ideal, 5 = PID filtrado, 6 = RST (P/PI/PID), 7 = RST alocação, 8 = GPC (RST),
+  9 = MPC, 10 = MPC antecipatório;
+- `volatile uint16_t perfil;` — 0 = referência A, 1 = referência B;
+- `volatile uint16_t iniciar;` — escrever 1 zera `k`, os estados do controlador e começa a
+  gravar; ao fim, `ensaio_concluido = 1`;
+- ganhos e coeficientes em uma `struct` global `volatile`, editável pelo WATCH com o programa
+  rodando: `Kp, Ki, Kd, Tf, Tt, u0, aw, d_medida`; `R[4], S[4], T[4], Ao[4], nR, nS, nT, aw_rst`;
+  `Np, Nu, lambda_, alfa_ref, alfa_obs, dumax, iter_max, preview`;
+- trocar `modo` com o ensaio parado (ou forçar `iniciar = 1`), para não aplicar a lei nova com
+  os estados da anterior.
+
+## RST genérico
+
+Uma única função calcula $v(k)$ para os ensaios 6 a 8 a partir dos vetores `R`, `S`, `T`, `Ao`:
+
+- `aw_rst = 0`: $v = Tr - Ry - \sum_{i\ge1} s_i\,v(k-i)$ (passado não saturado);
+- `aw_rst = 1`: o mesmo, com $u(k-i)$ aplicado no lugar de $v(k-i)$;
+- `aw_rst = 2`: $v = Tr - Ry + \sum_{i\ge1}(a_{o,i} - s_i)\,u(k-i) - \sum_{i\ge1} a_{o,i}\,v(k-i)$.
+
+## Gravação e memória
+
+- Buffers `float r_buf[N], y_buf[N], u_buf[N]` (e, opcionalmente, `v_buf[N]`, o comando antes
+  da saturação — útil nos ensaios de *windup*).
+- Na configuração `CPU1_RAM`, cada seção RAMGS tem **4096 palavras de 16 bits**; um `float`
+  ocupa 2 palavras. Três buffers de $N$ amostras ocupam $6N$ palavras: cabem na `ramgs0` só até
+  $N \approx 680$. Os ensaios desta nota usam $N = 220$ (A) e $N = 240$ (B) — cabem com folga
+  (1440 palavras). Para ensaios mais longos ou com `v_buf`, distribuir entre `ramgs0` e
+  `ramgs1` com `#pragma DATA_SECTION`.
+- As matrizes do MPC são pequenas ($\mathbf G$: 20×3, $\mathbf P$: 10×10 — menos de 1 KB).
+
+## Medição do tempo de cálculo
+
+Ler o contador do CPU Timer 1 (rodando livre a 200 MHz) no início e no fim da lei de controle
+e guardar o máximo e a média em variáveis do WATCH; alternativamente, alternar um GPIO e
+medir no osciloscópio. Comparar com a estimativa do ensaio 9.
+
+## Exportação
+
+Procedimento da [Nota 01](../Nota01LaunchPadF28379D.qmd), com um cuidado: **no gráfico do
+CCS, o *Capacity* deve ser igual ao número de amostras** ($N$), senão a exportação corta os
+dados. Exportar `r_buf`, `y_buf` e `u_buf` para os arquivos `eNN_..._sk03.csv` listados em
+cada ensaio, em `Notas/ControleSallenKey/dados/`.
+
+::: {.callout-note}
+Os ensaios da Nota 02 foram salvos como `DadosDegrau.csv` e `DadosPRBS01.csv`. Para os novos,
+esta nota propõe o padrão `eNN_<controlador>_sk03.csv`.
+:::
+
+# Tabela comparativa prevista
+
+Referência A, com ruído de medida (métricas de rastreamento na simulação sem ruído):
+
+```{python}
+tab = [("1. P (Kp = 2)", sims_p["Kp = 2"], None),
+       ("2. PI", s_pi, None),
+       ("3. PI + anti-windup", s_aw_a, None),
+       ("4. PID ideal", s_pid, None),
+       ("5. PID filtrado, D na medida", s_pidf, None),
+       ("6. RST (= PI)", roda(lambda: cs.RST(R_pi, S_pi, T_pi), rA), None),
+       ("7. RST alocação (α = 0,5)", s7_a, None),
+       ("8. GPC com C", s8_c, "< 0,01 ms (RST)"),
+       ("9. MPC u e Δu", s9a, "≤ 0,26 ms"),
+       ("10. MPC antecipatório (Np = 5)", s10["antecipatório, Np = 5"], "≤ 0,1 ms")]
+Markdown(CAB + "\n" + "\n".join(linha_metricas(n, s, tcalc=t, degrau=not n.startswith("10."))
+                                 for n, s, t in tab)
+         + "\n\nNo MPC com restrição em Δu (9 e 10), as subidas viram rampas e $t_s$ fica acima da "
+           "especificação: é o preço de limitar a taxa do atuador. No antecipatório, a saída começa a "
+           "subir antes da troca da referência, e $t_s$/sobressinal medidos a partir do degrau perdem o "
+           "sentido — compare pelo IAE.")
+```
+
+Referência B (saturação):
+
+```{python}
+Markdown(CAB_SAT + "\n" + "\n".join([
+    linha_sat("2. PI sem anti-windup", s_pi_b),
+    linha_sat("3. PI + retrocálculo", sims_aw["retrocálculo (Tt = Ti)"]),
+    linha_sat("7. RST sem anti-windup", sims7["RST sem anti-windup"]),
+    linha_sat("7. RST + observador", sims7["RST com anti-windup (Ao = Pf)"]),
+    linha_sat("9. MPC u e Δu", s9["MPC: u e |Δu| ≤ 0,1 V"])]))
+```
+
+Leitura rápida: todos os controladores com integrador atendem a especificação na referência A;
+o que os distingue é o **esforço de controle** (ruído e variação total de $u$), o comportamento
+**na saturação** e, nos preditivos, a capacidade de tratar **restrições** e **referência futura**.
+
+# O que observar na placa
+
+1. **P** — o patamar da saída para **abaixo** de 1,2 V (e acima de 0,8 V); a distância diminui
+   com $K_p$, mas nunca zera. Com $K_p = 4$, um pequeno sobressinal e mais ruído em $u$.
+2. **PI** — erro nulo nos patamares, acomodação em ~55 ms. Na referência B, $u$ fica colado em
+   1,7 V e, quando a referência desce, **continua colado** por ~45 ms antes de reagir; a
+   descida leva ~165 ms em vez de ~55 ms.
+3. **PI + anti-windup** — na referência B, $u$ sai da saturação no instante em que a referência
+   desce. Na referência A, a resposta é igual à do ensaio 2.
+4. **PID ideal** — um pico em $u$ a cada troca de referência e um $u$ visivelmente mais
+   "granulado" (ruído) que o do PI; a saída praticamente igual à do PI.
+5. **PID filtrado** — sem picos, ruído menor; a saída continua praticamente igual à do PI.
+6. **RST** — curvas sobrepostas às dos ensaios 2 e 4 (diferenças só de ruído). Comparar o
+   `aw_rst = 0` e o `aw_rst = 1` na referência B.
+7. **RST por alocação** — mesma saída para $\alpha$ = 0 e 0,5, mas com $\alpha = 0$ o $u$ fica
+   muito ruidoso. Na referência B, com o observador, sem *windup*.
+8. **GPC** — com $C = 1$, $u$ muito ruidoso em regime; com o polinômio $C$, $u$ limpo e a mesma
+   saída. Nos dois casos, $u$ alterna por algumas amostras logo após cada troca da referência
+   (polos de parte real negativa da malha fechada).
+9. **MPC** — subidas de $u$ em rampa (0,1 V por amostra); conferir o tempo de cálculo medido
+   contra os ~0,26 ms previstos no pior caso.
+10. **MPC antecipatório** — $y$ começa a subir **antes** da troca de $r$ (até $N_p$ amostras
+    antes); comparar $N_p = 5$ e $N_p = 20$.
+
+# Referências
+
+- Åström, K. J.; Hägglund, T. *Advanced PID Control*. ISA, 2006.
+- Åström, K. J.; Wittenmark, B. *Computer-Controlled Systems*. 3ª ed. Prentice Hall, 1997.
+- Landau, I. D.; Zito, G. *Digital Control Systems: Design, Identification and Implementation*. Springer, 2006.
+- Camacho, E. F.; Bordons, C. *Model Predictive Control*. 2ª ed. Springer, 2007.
+- Wang, L. *Model Predictive Control System Design and Implementation Using MATLAB*. Springer, 2009 (método de Hildreth).
+- Clarke, D. W.; Mohtadi, C.; Tuffs, P. S. Generalized predictive control. *Automatica*, v. 23, n. 2, 1987.
+- Paiva, R. S. T. *Filtro Sallen-Key como pocket-lab para ensino de identificação e controle de sistemas dinâmicos*. TCC — UFPA, 2025.

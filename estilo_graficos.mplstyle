@@ -1,0 +1,55 @@
+# Estilo dos gráficos das notas (apresentações revealjs 1600x900).
+# Uso nas notas: plt.style.use("../../estilo_graficos.mplstyle")
+
+# textos
+font.size           : 18
+axes.titlesize      : 20
+axes.titleweight    : bold
+axes.titlepad       : 10
+axes.labelsize      : 20
+axes.labelweight    : bold
+axes.labelpad       : 6
+xtick.labelsize     : 17
+ytick.labelsize     : 17
+legend.fontsize     : 16
+legend.title_fontsize : 16
+
+# linhas e marcadores
+lines.linewidth     : 2.6
+lines.markersize    : 8
+lines.markeredgewidth : 1.5
+patch.linewidth     : 1.5
+
+# eixos e marcas
+axes.linewidth      : 1.6
+axes.spines.top     : False
+axes.spines.right   : False
+xtick.major.size    : 7
+ytick.major.size    : 7
+xtick.major.width   : 1.6
+ytick.major.width   : 1.6
+xtick.minor.size    : 4
+ytick.minor.size    : 4
+xtick.minor.width   : 1.2
+ytick.minor.width   : 1.2
+xtick.direction     : out
+ytick.direction     : out
+
+# grade
+axes.grid           : True
+axes.grid.which     : major
+grid.alpha          : 0.35
+grid.linewidth      : 1.0
+grid.linestyle      : -
+
+# legenda
+legend.frameon      : True
+legend.framealpha   : 0.92
+legend.edgecolor    : 0.8
+legend.fancybox     : True
+legend.borderpad    : 0.5
+legend.handlelength : 2.4
+
+# figura
+figure.dpi          : 110
+savefig.dpi         : 150

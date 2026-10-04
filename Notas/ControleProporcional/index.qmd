@@ -1,0 +1,576 @@
+---
+title: "Nota 04 — Controle Proporcional"
+subtitle: "Filtro Sallen-Key com a LaunchPad LAUNCHXL-F28379D: erro em regime de uma planta tipo 0"
+institute: "Universidade Federal do Pará"
+author: "Prof. Dr. Raphael Teixeira"
+date: "2026-10-01"
+date-modified: last-modified
+lang: pt
+format:
+  revealjs:
+    theme: [simple, ../../TemaRTx.scss]
+    self-contained: true
+    transition: fade
+    slide-number: true
+    center: false
+    width: 1600
+    height: 900
+    footer: " "
+    html-math-method: mathjax
+    code-line-numbers: false
+    title-slide-attributes:
+      data-background-image: "../../imgs/ufpa-colorido.png"
+      data-background-size: "5%"
+      data-background-position: "top 3% center"
+execute:
+  echo: false
+jupyter: python3
+---
+
+```{python}
+#| label: setup
+import sys
+from pathlib import Path
+import numpy as np
+import matplotlib.pyplot as plt
+from IPython.display import Markdown
+
+sys.path.insert(0, "analise")
+import controle_p as cp
+cs = cp.cs
+
+plt.style.use("../../estilo_graficos.mplstyle")
+AZUL, VERMELHO, VERDE, CINZA, LARANJA = "#1F3A5F", "#C0392B", "#2E8B57", "#5F6B7A", "#D68910"
+CORES = [VERMELHO, AZUL, VERDE, LARANJA, CINZA]
+TS = cp.TS
+br = lambda x, n=2: f"{x:.{n}f}".replace(".", ",")
+mv = lambda x, n=1: br(1e3 * x, n)
+ms = lambda x: br(1e3 * x, 0)
+
+# todos os ensaios disponíveis: dados/DadosControleP*.csv
+ensaios = []
+for arq in sorted(Path("dados").glob("DadosControleP*.csv")):
+    e = cp.le_ensaio(arq)
+    e["u0"], e["kp"] = cp.estima_kp(e)
+    e["sim"] = cp.previsto(e, e["kp"], e["u0"])
+    e["sim_ruido"] = cp.previsto(e, e["kp"], e["u0"], ruido=True)
+    ensaios.append(e)
+E1 = next(e for e in ensaios if abs(e["kp"] - 1) < 0.05)       # ensaio de referência: Kp = 1
+K = cs.K_EST
+```
+
+## Roteiro
+
+1. **Lei de controle** proporcional e implementação no firmware `SK03ControleP`;
+2. **Teoria**: erro em regime numa planta tipo 0 e polos de malha fechada;
+3. **Ensaio com $K_p = 1$**: medido × previsto, erro em regime, transitório e ruído;
+4. **Comparação entre ganhos** ($K_p$ = 1 a 5): erro em regime, transitório, saturação e ruído —
+   atualizada a cada novo ensaio (`dados/DadosControleP*.csv`).
+
+Planta, modelo e simulação: [Nota 02](../IdentificacaoSallenKeyPRBS/index.qmd) (ARX(1,3,1)) e
+[Nota 03](../ControleSallenKey/index.qmd) (planejamento, ensaio 1). Placa e exportação dos dados:
+[Nota 01](../Nota01LaunchPadF28379D.qmd).
+
+# Lei de controle
+
+## Controle proporcional com polarização
+
+:::: {.columns}
+::: {.column width="45%"}
+$$
+e(k) = r(k) - y(k)
+$$
+
+$$
+u(k) = \text{sat}\big[\,u_0 + K_p\,e(k)\,\big],\qquad u \in [0;\ 1{,}7]\ \text{V}
+$$
+
+- $u_0 = 1{,}0$ V: **polarização** no ponto de operação — sem ela ($u = K_p e$) o erro seria
+  enorme, pois o P teria de "fabricar" toda a entrada a partir do erro;
+- $u(k)$ é escrito no DAC **depois** da leitura de $y(k)$: atraso de uma amostra;
+- $T_s$ = 5 ms, saturação de 1,7 V (LM358 em 3,3 V).
+:::
+::: {.column width="55%"}
+```{.c}
+float controle_passo(float y)               // SK03ControleP
+{
+    r = (k < N_AMOSTRAS) ? referencia(k) : U_OP;
+
+    e = r - y;                              // lei de controle P
+    u = Kp * e;
+    if (usar_bias != 0U)
+        u += U_OP;                          // u0 = 1,0 V
+
+    if (u > U_MAX) u = U_MAX;               // saturação
+    if (u < U_MIN) u = U_MIN;
+
+    r_buf[k] = r; u_buf[k] = u; y_buf[k] = y;
+    k++;
+    return u;
+}
+```
+`Kp`, `usar_bias` e `reiniciar` são alteráveis pelo WATCH do CCS.
+:::
+::::
+
+## Referência do ensaio
+
+- 20 amostras em $r = 1{,}0$ V (ponto de operação);
+- onda quadrada **1,2 ↔ 0,8 V**, 60 amostras (300 ms) em cada nível, 3 ciclos;
+- total: 380 amostras ($r$, $u$ e $y$ gravados em `float` na RAMGS0);
+- `modo_continuo = 1`: buffer circular — as 20 primeiras amostras ficam em 0,8 V (continuação
+  do ciclo anterior) e o ensaio se repete indefinidamente (usado nos ensaios com $K_p \geq 2$).
+
+O nível de 1,2 V fica 0,2 V acima do ponto de operação e o de 0,8 V, 0,2 V abaixo: o
+desvio de referência é $\tilde r = \pm 0{,}2$ V.
+
+# Teoria
+
+## Erro em regime numa planta tipo 0
+
+A planta tem ganho estático **finito**, $K = G(1)$ = `{python} br(K, 3)` — é do **tipo 0** (sem
+integrador). Em regime, com desvios em torno do ponto de operação ($\tilde y = K\tilde u$ e
+$\tilde u = K_p(\tilde r - \tilde y)$):
+
+$$
+\tilde y_\infty = \frac{K K_p}{1 + K K_p}\,\tilde r
+\qquad\Longrightarrow\qquad
+e_\infty = \tilde r - \tilde y_\infty = \frac{\tilde r}{1 + K K_p} = \frac{\tilde r}{1 + 0{,}983\,K_p}.
+$$
+
+```{python}
+linhas = []
+for kp in [0.5, 1, 2, 4, 8]:
+    ess = cp.erro_regime(kp, 1.2)
+    linhas.append(f"| {br(kp, 1)} | {br(K * kp, 2)} | {br(100 / (1 + K * kp), 0)} % | {mv(ess, 0)} |")
+Markdown("| $K_p$ | ganho de malha $KK_p$ | $1/(1+KK_p)$ | erro em $r$ = 1,2 V (mV) |\n|---|---|---|---|\n"
+         + "\n".join(linhas))
+```
+
+O erro **diminui** com $K_p$, mas **nunca zera**: zerar exigiria $K_p \to \infty$. Para erro nulo,
+é preciso um integrador no controlador (PI, próxima nota).
+
+## Polos de malha fechada
+
+Com o ARX(1,3,1), $G(z) = \dfrac{b_1 z^2 + b_2 z + b_3}{z^2(z - a_1)}$, a equação característica de
+$1 + K_p G(z) = 0$ é
+
+$$
+z^3 - (a_1 - K_p b_1)\,z^2 + K_p b_2\,z + K_p b_3 = 0.
+$$
+
+:::: {.columns}
+::: {.column width="45%"}
+```{python}
+linhas = []
+for kp in [0.5, 1, 2, 4, 8]:
+    p = cp.polos_mf(kp)
+    dom = max(p, key=abs)
+    txt = br(dom.real, 3) if abs(dom.imag) < 1e-9 else f"{br(dom.real, 3)} ± j{br(abs(dom.imag), 3)}"
+    linhas.append(f"| {br(kp, 1)} | {txt} | {br(abs(dom), 3)} |")
+Markdown("| $K_p$ | polo dominante | módulo |\n|---|---|---|\n" + "\n".join(linhas)
+         + f"\n\nInstabilidade (polo no círculo unitário) em $K_p \\approx$ {br(cp.kp_critico(), 1)}.")
+```
+:::
+::: {.column width="55%"}
+```{python}
+#| fig-width: 7.5
+#| fig-height: 6
+kps = np.linspace(0, 25, 600)
+P = np.array([np.sort_complex(cp.polos_mf(k)) for k in kps])
+fig, ax = plt.subplots(figsize=(7.5, 6))
+th = np.linspace(0, 2 * np.pi, 300); ax.plot(np.cos(th), np.sin(th), color="k", lw=1.5)
+for j in range(3):
+    ax.plot(P[:, j].real, P[:, j].imag, ".", ms=7, color=AZUL)
+for kp, c in [(1, VERMELHO), (2, VERDE), (4, LARANJA)]:
+    p = cp.polos_mf(kp); ax.plot(p.real, p.imag, "o", ms=12, color=c, label=f"Kp = {kp}")
+ax.plot([cs.A1], [0], "x", color="k", ms=12, mew=2, label="polo da planta")
+ax.set_aspect("equal"); ax.set_xlim(-1.1, 1.1); ax.set_ylim(-1.1, 1.1)
+ax.set_xlabel("Re z"); ax.set_ylabel("Im z"); ax.legend(fontsize=16, loc="lower left")
+ax.set_title("Lugar das raízes (Kp de 0 a 25)", fontsize=18)
+fig.tight_layout()
+```
+:::
+::::
+
+Aumentar $K_p$ **acelera** a resposta até $K_p \approx 2$; a partir daí os polos ficam complexos
+(oscilação, sobressinal) e se aproximam do círculo unitário.
+
+# Ensaio com $K_p = 1$
+
+## Ensaio (`DadosControleP01.csv`)
+
+```{python}
+#| fig-width: 15
+#| fig-height: 6.5
+e = E1
+fig, (a1, a2) = plt.subplots(2, 1, figsize=(15, 6.5), sharex=True, gridspec_kw={"height_ratios": [3, 2]})
+a1.step(e["t"], e["r"], where="post", color="k", ls="--", lw=2.6, label="r")
+a1.plot(e["t"], e["y"], color=VERMELHO, lw=2.6, label="y medido")
+for k0, k1, nivel in cp.patamares(e["r"]):
+    yr = cp.y_regime(e["kp"], nivel, e["u0"])
+    a1.hlines(yr, k0 * TS, k1 * TS, color=AZUL, ls=":", lw=2.6, label="y em regime (teoria)" if k0 == cp.N_PRE else None)
+a2.step(e["t"], e["u"], where="post", color=AZUL, lw=2.6, label="u")
+a1.set_ylabel("V"); a2.set_ylabel("u (V)"); a2.set_xlabel("t (s)")
+a1.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), frameon=False, ncol=3)
+fig.tight_layout()
+```
+
+A saída **não alcança** a referência: fica em ≈ 1,10 V quando $r$ = 1,2 V e em ≈ 0,90 V quando
+$r$ = 0,8 V — metade do caminho, como prevê $1/(1 + 0{,}983) \approx 50\ \%$.
+
+## O ganho usado foi mesmo $K_p = 1$?
+
+Os dados permitem **verificar** o ganho: fora da saturação, $u(k) = u_0 + K_p\,[r(k) - y(k)]$ é
+linear em $r - y$. Mínimos quadrados com as `{python} str(len(E1["r"]))` amostras:
+
+```{python}
+res = E1["u"] - (E1["u0"] + E1["kp"] * (E1["r"] - E1["y"]))
+nsat = int(np.sum((E1["u"] >= cs.U_MAX - 1e-6) | (E1["u"] <= cs.U_MIN + 1e-6)))
+Markdown(f"""
+| Parâmetro | Estimado dos dados | Firmware |
+|---|---|---|
+| $K_p$ | **{br(E1['kp'], 4)}** | `Kp = 1.0f` |
+| $u_0$ | **{br(E1['u0'], 4)}** | `U_OP = 1.0f` |
+| maior resíduo | {np.abs(res).max():.1e} V | — |
+| amostras saturadas | {nsat} | — |
+""")
+```
+
+Resíduo da ordem do arredondamento do `float`: o ensaio usou exatamente $K_p = 1$ e
+$u_0 = 1{,}0$ V, e o atuador **não saturou** (com $K_p = 1$, $u$ varia só entre ≈ 0,7 e 1,3 V).
+Os próximos ensaios terão o $K_p$ identificado da mesma forma.
+
+## Medido × previsto
+
+```{python}
+#| fig-width: 15
+#| fig-height: 6.5
+e = E1
+fig, (a1, a2) = plt.subplots(1, 2, figsize=(15, 6.5), gridspec_kw={"width_ratios": [2, 1]})
+for ax in (a1, a2):
+    ax.step(e["t"], e["r"], where="post", color="k", ls="--", lw=1.5, label="r")
+    ax.plot(e["t"], e["y"], ".", color=VERMELHO, ms=7, label="y medido")
+    ax.plot(e["t"], e["sim"]["y"], color=AZUL, lw=3, label="y previsto (Nota 03)")
+    ax.set_xlabel("t (s)")
+a1.set_ylabel("y (V)"); a1.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), frameon=False, ncol=3)
+a2.set_xlim(0.68, 0.86); a2.set_ylim(0.88, 1.13); a2.set_title("detalhe: subida", fontsize=18)
+fig.tight_layout()
+```
+
+```{python}
+Markdown(f"Previsão: ARX(1,3,1) + atraso + saturação (simulação da Nota 03), com a mesma referência e o "
+         f"mesmo $K_p$. **FIT = {br(cp.fit(E1['y'], E1['sim']['y']), 1)} %** — o modelo identificado com a "
+         f"PRBS em malha aberta prevê bem o comportamento **em malha fechada**.")
+```
+
+## Erro em regime por patamar
+
+```{python}
+linhas = []
+for i, (k0, k1, nivel) in enumerate(cp.patamares(E1["r"])):
+    ym = E1["y"][k0 + 30:k1].mean()
+    teo = cp.erro_regime(E1["kp"], nivel, E1["u0"])
+    linhas.append(f"| {i + 1} | {br(nivel, 1)} | {br(ym, 4)} | {mv(nivel - ym)} | {mv(teo)} | "
+                  f"{mv((nivel - ym) - teo)} | {mv(E1['y'][k0 + 30:k1].std())} |")
+Markdown("| patamar | $r$ (V) | $y$ médio (V) | erro medido (mV) | erro teórico (mV) | diferença (mV) | desvio de y (mV) |\n"
+         "|---|---|---|---|---|---|---|\n" + "\n".join(linhas)
+         + "\n\n$y$ médio nas últimas 30 amostras de cada patamar. Teórico: $e_\\infty = \\tilde r/(1 + KK_p)$ com o "
+           "modelo em variáveis absolutas.")
+```
+
+Medido e teórico diferem em **menos de 1 mV** — dentro da resolução do ADC (0,73 mV). A
+pequena assimetria (+102 mV em cima, −99 mV embaixo) também é prevista: o ponto de operação da
+planta com $u_0 = 1{,}0$ V é $y \approx 0{,}998$ V, não exatamente 1,0 V.
+
+## Transitório: média dos três ciclos
+
+```{python}
+#| fig-width: 15
+#| fig-height: 5.5
+fig, eixos = plt.subplots(1, 2, figsize=(15, 5.5))
+tab = []
+for ax, sent, tit in zip(eixos, (1, -1), ("subidas (0,8 → 1,2 V)", "descidas (1,2 → 0,8 V)")):
+    ym, n = cp.media_ciclos(E1["y"], E1["r"], sent)
+    ys, _ = cp.media_ciclos(E1["sim"]["y"], E1["r"], sent)
+    tt = (np.arange(len(ym)) - 1) * TS * 1e3
+    ax.plot(tt, ym, "o-", color=VERMELHO, ms=7, lw=1.5, label=f"medido (média de {n})")
+    ax.plot(tt, ys, color=AZUL, lw=3, label="previsto")
+    ax.set_xlim(-10, 120); ax.set_xlabel("tempo após o degrau (ms)"); ax.set_title(tit, fontsize=18)
+    for faixa in (0.02, 0.05):
+        tab.append((tit, faixa, cp.acomodacao(ym, faixa), cp.acomodacao(ys, faixa)))
+eixos[0].set_ylabel("y (V)"); eixos[0].legend(fontsize=16)
+fig.tight_layout()
+```
+
+```{python}
+Markdown("| | faixa | $t_s$ medido (ms) | $t_s$ previsto (ms) | sobressinal medido (%) |\n|---|---|---|---|---|\n"
+         + "\n".join(f"| {t} | {br(100 * f, 0)} % | {br(1e3 * m[0], 0)} | {br(1e3 * p[0], 0)} | {br(m[1], 1)} |"
+                     for t, f, m, p in tab))
+```
+
+## Por que o $t_s$ medido difere?
+
+- As curvas medida e prevista coincidem **amostra a amostra** dentro de ±3 mV;
+- Com $KK_p \approx 1$, a saída só percorre **metade** do degrau de referência: ≈ 0,17 V. A faixa
+  de 2 % é de **±3,4 mV** — do tamanho do ruído do ADC (≈ 2 mV de desvio; ≈ 1,1 mV na média de
+  três ciclos). Uma única amostra ruidosa fora da faixa "atrasa" o $t_s$;
+- O mesmo vale para o "sobressinal" medido de 1–2 %: são 2–3 mV, nível de ruído — o polo
+  dominante de malha fechada é **real** ($z \approx 0{,}58$), sem oscilação;
+- Com a faixa de **5 %**, medido e previsto concordam.
+
+::: {.callout-tip}
+## Lição de método
+Métricas de faixa estreita só fazem sentido quando a faixa é bem maior que o ruído. Com
+excursões pequenas, prefira **média de vários ciclos**, faixa de 5 % ou o ajuste de um modelo
+(constante de tempo) aos dados.
+:::
+
+## Ruído na ação de controle
+
+$$
+u(k) = u_0 + K_p\,[r(k) - y(k)] \quad\Longrightarrow\quad \sigma_u = K_p\,\sigma_y
+$$
+
+```{python}
+linhas = []
+for k0, k1, nivel in cp.patamares(E1["r"]):
+    sy, su = E1["y"][k0 + 30:k1].std(), E1["u"][k0 + 30:k1].std()
+    linhas.append(f"| {br(nivel, 1)} | {mv(sy, 2)} | {mv(su, 2)} | {br(su / sy, 3)} |")
+Markdown("| $r$ (V) | desvio de y (mV) | desvio de u (mV) | razão u/y |\n|---|---|---|---|\n" + "\n".join(linhas))
+```
+
+Com $K_p = 1$ o ruído do ADC passa **integralmente** para $u$ (razão exatamente 1). Com
+$K_p = 4$, o ruído em $u$ será ≈ 4 vezes maior: reduzir o erro com ganho cobra o preço em ruído
+no atuador.
+
+# Comparação entre ganhos
+
+```{python}
+#| label: resumo
+def estatisticas(e):
+    """Métricas de um ensaio (medido) e da previsão correspondente."""
+    pat = cp.patamares(e["r"])
+    ess = {"alto": np.mean([n - e["y"][k0 + 30:k1].mean() for k0, k1, n in pat if n > 1.1]),
+           "baixo": np.mean([n - e["y"][k0 + 30:k1].mean() for k0, k1, n in pat if n < 0.9])}
+    out = dict(ess=ess,
+               ess_teo={"alto": cp.erro_regime(e["kp"], 1.2, e["u0"]), "baixo": cp.erro_regime(e["kp"], 0.8, e["u0"])},
+               sy=np.mean([e["y"][k0 + 30:k1].std() for k0, k1, _ in pat]),
+               su=np.mean([e["u"][k0 + 30:k1].std() for k0, k1, _ in pat]),
+               sat_sup=int(np.sum(e["u"] >= cs.U_MAX - 1e-6)), sat_inf=int(np.sum(e["u"] <= cs.U_MIN + 1e-6)),
+               sat_sup_prev=int(np.sum(e["sim_ruido"]["u"] >= cs.U_MAX - 1e-6)),
+               sat_inf_prev=int(np.sum(e["sim_ruido"]["u"] <= cs.U_MIN + 1e-6)),
+               fit=cp.fit(e["y"], e["sim"]["y"]),
+               residuo=np.abs(e["u"] - np.clip(e["u0"] + e["kp"] * (e["r"] - e["y"]), cs.U_MIN, cs.U_MAX)).max(),
+               continuo=abs(e["r"][0] - cs.U_OP) > 0.05)
+    for sent, nome in ((1, "sobe"), (-1, "desce")):
+        ym, n = cp.media_ciclos(e["y"], e["r"], sent)
+        ys, _ = cp.media_ciclos(e["sim"]["y"], e["r"], sent)
+        out[nome] = dict(med=cp.acomodacao(ym, 0.05), prev=cp.acomodacao(ys, 0.05), n=n, ym=ym, ys=ys)
+    return out
+
+for e in ensaios:
+    e["est"] = estatisticas(e)
+KPS = [e["kp"] for e in ensaios]
+```
+
+## Ensaios e consistência dos dados
+
+```{python}
+linhas = []
+for e in ensaios:
+    s = e["est"]
+    linhas.append(f"| `{e['nome']}.csv` | {br(e['kp'], 3)} | {br(e['u0'], 3)} | "
+                  f"{'contínuo' if s['continuo'] else 'única'} | {mv(s['residuo'], 1)} | {br(s['fit'], 1)} % |")
+Markdown("| Arquivo | $K_p$ (dos dados) | $u_0$ (dos dados) | gravação | maior desvio da lei $u = u_0 + K_p e$ (mV) | FIT medido × previsto |\n"
+         "|---|---|---|---|---|---|\n" + "\n".join(linhas))
+```
+
+::: {.callout-warning}
+## Gravação contínua: exportar com o programa **pausado**
+Nos ensaios com $K_p \geq 2$, o firmware estava em `modo_continuo = 1`: o buffer é circular e
+reescrito a cada 380 amostras. Por isso o ensaio começa em $r$ = 0,8 V (o fim do ciclo anterior,
+já em regime periódico). A exportação foi feita com o programa rodando, então `u_buf` e `y_buf`
+foram lidos em instantes diferentes e misturam **ciclos vizinhos**. Cada sinal continua válido,
+mas a correspondência amostra a amostra entre $u$ e $y$ se perde no nível do ruído: o desvio da
+lei cresce com $K_p$ (≈ $K_p \times$ diferença de ruído entre ciclos). O $K_p$ estimado não é
+afetado. Nos próximos ensaios: **pausar** (ou `modo_continuo = 0` e esperar
+`ensaio_concluido = 1`) antes de exportar.
+:::
+
+## Erro em regime × $K_p$
+
+:::: {.columns}
+::: {.column width="55%"}
+```{python}
+#| fig-width: 8
+#| fig-height: 6
+kk = np.linspace(0.5, 6, 200)
+fig, ax = plt.subplots(figsize=(8, 6))
+ax.plot(kk, [1e3 * cp.erro_regime(k, 1.2) for k in kk], color=AZUL, lw=3, label="teoria, r = 1,2 V")
+ax.plot(kk, [-1e3 * cp.erro_regime(k, 0.8) for k in kk], color=VERDE, lw=3, ls="--", label="teoria, r = 0,8 V (|e|)")
+ax.plot(KPS, [1e3 * e["est"]["ess"]["alto"] for e in ensaios], "o", ms=12, color=VERMELHO, label="medido, r = 1,2 V")
+ax.plot(KPS, [-1e3 * e["est"]["ess"]["baixo"] for e in ensaios], "s", ms=12, mfc="none", mew=2, color=VERMELHO, label="medido, r = 0,8 V (|e|)")
+ax.set_xlabel("$K_p$"); ax.set_ylabel("erro em regime (mV)"); ax.set_ylim(0, 150)
+ax.legend(fontsize=16)
+fig.tight_layout()
+```
+:::
+::: {.column width="45%"}
+```{python}
+linhas = []
+for e in ensaios:
+    s = e["est"]
+    linhas.append(f"| {br(e['kp'], 0)} | {br(100 / (1 + K * e['kp']), 0)} % | {mv(s['ess']['alto'])} | {mv(s['ess_teo']['alto'])} | "
+                  f"{mv(s['ess']['baixo'])} | {mv(s['ess_teo']['baixo'])} |")
+Markdown("| $K_p$ | $\\frac{1}{1+KK_p}$ | $e$ em 1,2 V med. | teo. | $e$ em 0,8 V med. | teo. |\n"
+         "|---|---|---|---|---|---|\n" + "\n".join(linhas) + "\n\nErros em mV, média dos patamares.")
+```
+:::
+::::
+
+Medido e teórico diferem em **menos de 1 mV** para todos os ganhos: de 102 mV ($K_p$ = 1) a
+34 mV ($K_p$ = 5), o erro cai como $1/(1 + KK_p)$ — **cinco vezes mais ganho reduz o erro só
+três vezes**, e o erro nunca zera.
+
+## Transitório × $K_p$
+
+```{python}
+#| fig-width: 15
+#| fig-height: 5.6
+fig, eixos = plt.subplots(1, 2, figsize=(15, 5.6), sharey=False)
+for ax, nome, tit in zip(eixos, ("sobe", "desce"), ("subidas (0,8 → 1,2 V)", "descidas (1,2 → 0,8 V)")):
+    for i, e in enumerate(ensaios):
+        s = e["est"][nome]
+        tt = (np.arange(len(s["ym"])) - 1) * TS * 1e3
+        c = CORES[i % len(CORES)]
+        ax.plot(tt, s["ym"], "o-", ms=7, lw=2.6, color=c, label=f"Kp = {br(e['kp'], 0)}")
+        ax.plot(tt, s["ys"], "--", lw=1.5, color=c)
+    ax.set_xlim(-10, 120); ax.set_xlabel("tempo após o degrau (ms)"); ax.set_title(tit, fontsize=18)
+eixos[0].set_ylabel("y (V)"); eixos[0].legend(fontsize=16, ncol=1)
+eixos[1].text(60, eixos[1].get_ylim()[1] - 0.02, "pontos: medido (média dos ciclos)\ntracejado: previsto", fontsize=16, va="top")
+fig.tight_layout()
+```
+
+```{python}
+linhas = []
+for e in ensaios:
+    s = e["est"]; p = max(cp.polos_mf(e["kp"]), key=abs)
+    polo = br(p.real, 2) if abs(p.imag) < 1e-9 else f"{br(p.real, 2)} ± j{br(abs(p.imag), 2)}"
+    linhas.append(f"| {br(e['kp'], 0)} | {polo} | {br(s['sobe']['med'][1], 1)} | {br(s['sobe']['prev'][1], 1)} | "
+                  f"{br(s['desce']['med'][1], 1)} | {br(s['desce']['prev'][1], 1)} | {ms(s['sobe']['med'][0])} | {ms(s['sobe']['prev'][0])} |")
+Markdown("| $K_p$ | polo dominante | sobressinal subida med. (%) | prev. | sobressinal descida med. (%) | prev. | $t_s$ 5 % med. (ms) | prev. |\n"
+         "|---|---|---|---|---|---|---|---|\n" + "\n".join(linhas))
+```
+
+## Leitura do transitório
+
+- Até $K_p \approx 2$ o polo dominante é **real**: a resposta acelera sem oscilar
+  ($t_s$ cai de 35 para 20 ms);
+- A partir de $K_p \approx 2$ os polos ficam **complexos**: aparece sobressinal, que cresce com
+  $K_p$ (≈ 6 % com $K_p$ = 3, ≈ 11 % com $K_p$ = 5), e a resposta **deixa de acelerar** — a
+  oscilação compensa o ganho;
+- O sobressinal **medido coincide com o previsto** pelo ARX em todos os ganhos (diferença de
+  ≈ 1 ponto percentual): o modelo de malha aberta prevê também a dinâmica oscilatória;
+- **Assimetria**: na descida o sobressinal é maior que na subida (13 % × 8 % com $K_p$ = 4) —
+  efeito da **saturação**, próximo slide.
+
+## Saturação do atuador
+
+:::: {.columns}
+::: {.column width="55%"}
+```{python}
+#| fig-width: 8
+#| fig-height: 6.2
+fig, ax = plt.subplots(figsize=(8, 6.2))
+for i, e in enumerate(ensaios):
+    um, _ = cp.media_ciclos(e["u"], e["r"], 1)
+    umd, _ = cp.media_ciclos(e["u"], e["r"], -1)
+    tt = (np.arange(len(um)) - 1) * TS * 1e3
+    c = CORES[i % len(CORES)]
+    ax.step(tt, um, where="post", color=c, lw=2.6, label=f"Kp = {br(e['kp'], 0)}")
+    ax.step(tt, umd, where="post", color=c, lw=2.6, ls="--")
+ax.axhline(cs.U_MAX, color="k", ls=":", lw=1.5); ax.axhline(cs.U_MIN, color="k", ls=":", lw=1.5)
+ax.text(70, 1.63, "u máx = 1,7 V", fontsize=16); ax.text(70, 0.04, "u mín = 0 V", fontsize=16)
+ax.set_xlim(-10, 100); ax.set_xlabel("tempo após o degrau (ms)"); ax.set_ylabel("u (V)")
+ax.set_title("u: subidas (—) e descidas (- -)", fontsize=18); ax.legend(loc="center left", bbox_to_anchor=(1.0, 0.5), frameon=False)
+fig.tight_layout()
+```
+:::
+::: {.column width="45%"}
+```{python}
+linhas = []
+for e in ensaios:
+    s = e["est"]
+    d_sobe = e["kp"] * (1.2 - e["est"]["sobe"]["ym"][0])
+    linhas.append(f"| {br(e['kp'], 0)} | {br(cs.U_OP + d_sobe, 2)} | {s['sat_sup']} / {s['sat_sup_prev']} | "
+                  f"{s['sat_inf']} / {s['sat_inf_prev']} |")
+Markdown("| $K_p$ | $u$ pedido logo após a subida (V) | amostras em 1,7 V (med./prev.) | amostras em 0 V (med./prev.) |\n"
+         "|---|---|---|---|\n" + "\n".join(linhas))
+```
+
+No degrau, o salto pedido é $K_p\,[r - y]$ ≈ $K_p \times 0{,}3$ V. A partir de $K_p$ = 3 o
+comando passa de 1,7 V na subida e fica abaixo de 0 V na descida.
+:::
+::::
+
+**Por que a descida oscila mais**: a polarização $u_0$ = 1,0 V está a 0,7 V do limite superior,
+mas a 1,0 V do inferior. Na subida a saturação **corta** uma parte maior do comando, o que freia a
+saída e reduz o sobressinal; na descida o corte é menor. A saturação também explica por que
+aumentar $K_p$ deixa de acelerar a subida.
+
+## Ruído × $K_p$
+
+:::: {.columns}
+::: {.column width="55%"}
+```{python}
+#| fig-width: 8
+#| fig-height: 6
+fig, ax = plt.subplots(figsize=(8, 6))
+ax.plot(KPS, [1e3 * e["est"]["su"] for e in ensaios], "o-", ms=12, color=VERMELHO, label="desvio de u")
+ax.plot(KPS, [1e3 * e["est"]["sy"] for e in ensaios], "s-", ms=12, color=AZUL, label="desvio de y")
+ax.plot(KPS, [1e3 * e["kp"] * e["est"]["sy"] for e in ensaios], ":", color=VERMELHO, lw=2.6, label="$K_p\\,\\sigma_y$")
+ax.set_xlabel("$K_p$"); ax.set_ylabel("desvio padrão (mV)"); ax.legend(fontsize=16)
+fig.tight_layout()
+```
+:::
+::: {.column width="45%"}
+```{python}
+Markdown("| $K_p$ | $\\sigma_y$ (mV) | $\\sigma_u$ (mV) | $\\sigma_u/\\sigma_y$ |\n|---|---|---|---|\n"
+         + "\n".join(f"| {br(e['kp'], 0)} | {mv(e['est']['sy'], 2)} | {mv(e['est']['su'], 2)} | {br(e['est']['su'] / e['est']['sy'], 2)} |"
+                     for e in ensaios))
+```
+
+- $\sigma_u \approx K_p\,\sigma_y$: o ruído do ADC chega ao atuador **multiplicado pelo ganho**
+  — com $K_p$ = 5, ≈ 12 mV em $u$;
+- $\sigma_y$ também cresce com $K_p$ (1,9 → 2,4 mV): com polos complexos, a malha fechada
+  **amplifica** parte do ruído em vez de atenuá-lo.
+:::
+::::
+
+## Conclusões
+
+```{python}
+e_max = max(ensaios, key=lambda e: e["kp"])
+dif = max(abs(e["est"]["ess"][n] - e["est"]["ess_teo"][n]) for e in ensaios for n in ("alto", "baixo"))
+Markdown(f"""
+- **Erro em regime** de uma planta tipo 0 sob controle P: com $K_p$ de {br(min(KPS), 0)} a {br(max(KPS), 0)},
+  de {mv(E1['est']['ess']['alto'], 0)} a {mv(e_max['est']['ess']['alto'], 0)} mV para um desvio de 200 mV,
+  sempre a menos de {br(1e3 * dif, 1)} mV de $\\tilde r/(1 + KK_p)$ — **diminui, mas não zera**;
+- **Preço do ganho**: sobressinal a partir de $K_p \\approx 2$ (polos complexos), **saturação** a partir
+  de $K_p$ = 3 e **ruído** em $u$ proporcional a $K_p$ ({mv(E1['est']['su'], 1)} → {mv(e_max['est']['su'], 1)} mV);
+- **Melhor compromisso** com P puro: $K_p \\approx 2$ — mais rápido ($t_s$ ≈ 20 ms), praticamente sem
+  sobressinal e sem saturar, mas ainda com erro de ≈ 68 mV (34 %);
+- O **modelo ARX** da Nota 02 prevê a malha fechada em todos os ganhos — erro, sobressinal,
+  saturação (FIT de {br(min(e['est']['fit'] for e in ensaios), 1)} a {br(max(e['est']['fit'] for e in ensaios), 1)} %);
+- **Próximo passo**: o **PI** (ensaio 2 da Nota 03) para zerar o erro sem precisar de ganho alto.
+""")
+```
+
+::: {.callout-note}
+## Como incluir novos ensaios
+Gravar com o `SK03ControleP` (alterar `Kp` pelo WATCH e escrever `reiniciar = 1`), **pausar** o
+programa (ou usar `modo_continuo = 0` e esperar `ensaio_concluido = 1`), exportar `r_buf`, `u_buf`,
+`y_buf` (com *Capacity* = 380 no gráfico do CCS) e salvar como `DadosControleP<NN>.csv`
+em `Notas/ControleProporcional/dados/`. A nota processa todos os arquivos automaticamente.
+:::

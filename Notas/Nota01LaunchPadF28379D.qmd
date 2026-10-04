@@ -1,0 +1,259 @@
+---
+title: "Nota 01 — Placa LAUNCHXL-F28379D"
+subtitle: "LaunchPad C2000 Delfino: CCS, DAC/ADC, aquisição de dados"
+description: "TMS320F28379D e LaunchPad LAUNCHXL-F28379D com configuração de projeto no Code Composer Studio."
+author: "Raphael Teixeira"
+date: "2026-10-01"
+date-modified: last-modified
+categories: [C2000, CCS, LaunchPad, F28379D]
+placa: "LAUNCHXL-F28379D"
+ordem: 1
+status: rascunho
+lang: pt-BR
+---
+
+[⬅ Índice do projeto](../index.qmd)
+
+## Objetivo
+Descrição da placa microcontrolada **LAUNCHXL-F28379D** (LaunchPad
+C2000 Delfino) e do microcontrolador
+TMS320F28379D, os recursos da placa (depurador, alimentação, LEDs, conectores), os sinais
+disponíveis nos BoosterPacks e o roteiro para criar, compilar e gravar o primeiro projeto no
+Code Composer Studio (CCS). É a base para os demais projetos e notas deste repositório.
+
+## O microcontrolador TMS320F28379D
+
+O F28379D é uma placa da família **Delfino F2837xD**, voltada ao controle de conversores de potência e acionamentos elétricos.
+
+| Recurso | TMS320F28379D |
+|---|---|
+| CPUs | 2 × C28x de 32 bits, 200 MHz, com FPU (ponto flutuante simples), TMU (trigonometria) e VCU-II |
+| Coprocessadores | 2 × CLA (*Control Law Accelerator*), um por CPU, 200 MHz |
+| Memória | até 1 MB de Flash (com ECC) e 204 KB de RAM |
+| ADC | 4 módulos, modo 16 bits (diferencial) ou 12 bits (simples) |
+| PWM | 24 canais ePWM (12 módulos), 16 com alta resolução (HRPWM) |
+| Captura/encoder | 6 × eCAP, 3 × eQEP |
+| Analógicos | 8 comparadores com janela (CMPSS), 3 DACs de 12 bits, SDFM (8 canais) |
+| Comunicação | SCI (UART), SPI, I²C, CAN, McBSP, USB, uPP, EMIF |
+
+::: {.callout-tip}
+## Por que esta família para eletrônica de potência
+- o **ePWM** gera PWM complementar com tempo morto em hardware e dispara o ADC (SOC)
+  sincronizado com a portadora — a amostragem fica no centro do pulso, sem *ripple* de
+  chaveamento;
+- o **CLA** executa a malha de controle em paralelo à CPU, com latência determinística;
+- a **TMU** acelera $\sin$, $\cos$ e $\operatorname{atan2}$, usadas nas transformações de
+  Park e no PLL.
+:::
+
+## A placa LaunchPad
+
+A LAUNCHXL-F28379D é dividida em duas regiões, separadas por uma barreira de isolação:
+
+- **lado do depurador (USB)**: emulador **XDS100v2** integrado (JTAG via USB) e porta serial
+  virtual (*back-channel UART*), alimentados pela USB do computador;
+- **lado alvo**: o F28379D, cristal de 10 MHz, reguladores de 3,3 V, referência de tensão
+  de 3,0 V para os ADCs, LEDs, botão de reset e os conectores BoosterPack.
+
+| Item | Função |
+|---|---|
+| USB (XDS100v2) | gravação, depuração e porta serial virtual (SCI-A, GPIO42/GPIO43) |
+| Cristal 10 MHz | fonte de clock; com o PLL: $10\ \text{MHz} \times 40 / 2 = 200\ \text{MHz}$ |
+| LEDs de usuário | GPIO31 (azul) e GPIO34 (vermelho) — `DEVICE_GPIO_PIN_LED1/LED2` na C2000Ware |
+| Reset | botão de reset do F28379D |
+| Chave de boot | seleciona o modo de *boot* (GPIO72/GPIO84) |
+| BoosterPack | dois *sites* de 40 pinos (J1–J4 e J5–J8) |
+| Encoder / CAN | conectores para eQEP e transceptor CAN |
+| Referência ADC | $V_{REFHI} = 3{,}0\ \text{V}$ — faixa de entrada analógica $0$ a $3{,}0$ V |
+
+::: {.callout-warning}
+## Conferir na placa
+Designadores de *jumpers* (alimentação/isolação), posição padrão da chave de *boot* e mapa
+completo dos pinos dos BoosterPacks devem ser conferidos no *User's Guide* (SPRUI77) e
+registrados aqui antes de acoplar BoosterPacks ou circuitos externos. As entradas analógicas **não toleram
+5 V**: todo sinal de medição deve estar condicionado para a faixa $0$–$3{,}0$ V.
+:::
+
+### Alimentação
+
+No uso de bancada com o computador, a placa é alimentada pela própria USB. Quando acoplada
+a um BoosterPack de potência, o lado alvo compartilha o terra desse circuito; a isolação
+do XDS100v2 protege o computador, mas a configuração dos *jumpers* de alimentação deve ser
+revista para não interligar fontes.
+
+### Modos de boot
+
+| Situação | Comportamento |
+|---|---|
+| Depurador conectado (CCS) | o CCS carrega o programa em RAM ou Flash e controla a execução |
+| Placa isolada, *boot* da Flash | o programa gravado na Flash roda ao energizar (aplicação autônoma) |
+
+## Primeiro projeto no CCS
+
+### Pré-requisitos
+
+1. **Code Composer Studio** instalado com suporte a *C2000 real-time MCUs*;
+2. **C2000Ware** (contém a `driverlib`, os arquivos de dispositivo e os exemplos);
+3. Placa ligada pela USB — o sistema deve reconhecer o XDS100v2.
+
+### Criar o projeto a partir de um exemplo
+
+1. *File → Import → CCS Projects* e selecionar
+   `C2000Ware/driverlib/f2837xd/examples/cpu1/led/` (exemplo `led_ex1_blink`);
+2. Marcar *Copy projects into workspace* e copiar a pasta do projeto para este repositório;
+3. Em *Properties → Build → C2000 Compiler → Predefined Symbols*, conferir o símbolo
+   **`_LAUNCHXL_F28379D`** — ele faz o `device.h` usar o clock e os LEDs da LaunchPad;
+4. Escolher a configuração de *build*:
+   - **CPU1_RAM** — programa carregado na RAM (rápido para depurar, perdido ao desligar);
+   - **CPU1_FLASH** — programa gravado na Flash (persiste, roda sem o CCS);
+5. *Target configuration*: dispositivo **TMS320F28379D**, conexão
+   **Texas Instruments XDS100v2 USB Debug Probe**.
+
+### Código mínimo (pisca-LED)
+
+```c
+#include "driverlib.h"
+#include "device.h"
+
+void main(void)
+{
+    Device_init();          // clock 200 MHz, watchdog desligado, periféricos habilitados
+    Device_initGPIO();      // desbloqueia os GPIOs
+
+    GPIO_setPadConfig(DEVICE_GPIO_PIN_LED1, GPIO_PIN_TYPE_STD);
+    GPIO_setDirectionMode(DEVICE_GPIO_PIN_LED1, GPIO_DIR_MODE_OUT);
+
+    Interrupt_initModule();      // PIE
+    Interrupt_initVectorTable();
+    EINT;                        // habilita interrupções globais
+    ERTM;                        // habilita depuração em tempo real
+
+    for (;;)
+    {
+        GPIO_togglePin(DEVICE_GPIO_PIN_LED1);
+        DEVICE_DELAY_US(500000); // 0,5 s
+    }
+}
+```
+
+### Compilar, gravar e depurar
+
+1. *Build* (martelo) — gera o `.out` na pasta da configuração (`CPU1_RAM/` ou `CPU1_FLASH/`,
+   ignoradas pelo Git);
+2. *Debug* (inseto) — conecta ao XDS100v2, grava e para em `main()`;
+3. *Resume* (F8) — o LED azul deve piscar a 1 Hz;
+4. Janela *Expressions* para observar variáveis em tempo real (com `ERTM` habilitado).
+
+## Excitação e medição: DAC e ADC
+
+Para ensaios em malha aberta e em malha fechada, a placa gera um sinal com o **DAC** e mede a
+resposta com o **ADC**, ambos referenciados a $V_{REFHI} = 3{,}0$ V.
+
+| Recurso | Pino (LaunchPad) | Faixa | Resolução |
+|---|---|---|---|
+| DAC-A (DACOUTA) | J3.30 | 0–3,0 V | 12 bits ($3{,}0/4095 \approx 0{,}73$ mV) |
+| ADC-A, canal ADCINA3 | J3.26 | 0–3,0 V | 12 bits, modo *single-ended* |
+
+::: {.callout-warning}
+## Entradas do ADC: 0 a 3,0 V
+Uma saída GPIO (3,3 V) ou um sinal de 5 V **não** pode ir direto ao ADC. Trabalhar em torno
+de um ponto de operação (p.ex. 0,6–1,4 V) mantém DAC, ADC e o circuito externo longe das
+saturações; o circuito externo deve ser alimentado de modo que sua saída fique em 0–3,0 V.
+:::
+
+## Amostragem disparada por hardware
+
+Padrão usado nos projetos: o **CPU Timer 0** define o período de amostragem $T_s$; seu sinal
+TINT0 dispara a conversão do ADC (SOC0) e o fim da conversão gera a interrupção ADCA INT1, onde
+roda a lei de controle/excitação. Assim $T_s$ não depende do tempo de execução do software.
+
+```{.default}
+CPU Timer 0 (Ts) ──TINT0──► ADC-A SOC0 ──fim de conversão──► ISR adcA1ISR
+                                                              y(k) ← ADC
+                                                              u(k) ← lei de controle/excitação
+                                                              DAC  ← u(k)
+```
+
+```c
+static void adc_init(void)
+{
+    ADC_setPrescaler(ADCA_BASE, ADC_CLK_DIV_4_0);
+    ADC_setMode(ADCA_BASE, ADC_RESOLUTION_12BIT, ADC_MODE_SINGLE_ENDED);
+    ADC_setInterruptPulseMode(ADCA_BASE, ADC_PULSE_END_OF_CONV);
+    ADC_enableConverter(ADCA_BASE);
+    DEVICE_DELAY_US(1000);
+
+    // SOC0: canal ADCINA3, disparado pelo CPU Timer 0, janela de 64 ciclos
+    ADC_setupSOC(ADCA_BASE, ADC_SOC_NUMBER0, ADC_TRIGGER_CPU1_TINT0,
+                 ADC_CH_ADCIN3, 63U);
+
+    // Fim da conversao do SOC0 gera ADCA INT1
+    ADC_setInterruptSource(ADCA_BASE, ADC_INT_NUMBER1, ADC_SOC_NUMBER0);
+    ADC_enableInterrupt(ADCA_BASE, ADC_INT_NUMBER1);
+    ADC_clearInterruptStatus(ADCA_BASE, ADC_INT_NUMBER1);
+}
+
+static void timer_init(void)
+{
+    CPUTimer_stopTimer(CPUTIMER0_BASE);
+    CPUTimer_setPreScaler(CPUTIMER0_BASE, 0U);
+    CPUTimer_setPeriod(CPUTIMER0_BASE, (uint32_t)(DEVICE_SYSCLK_FREQ * TS_S) - 1U);
+    CPUTimer_reloadTimerCounter(CPUTIMER0_BASE);
+    CPUTimer_enableInterrupt(CPUTIMER0_BASE);   // gera o TINT0 que dispara o ADC
+}
+
+__interrupt void adcA1ISR(void)
+{
+    float y = adc_le_volts();
+    float u = controle_passo(y);     // lei de excitação ou de controle
+    dac_escreve_volts(u);
+
+    ADC_clearInterruptStatus(ADCA_BASE, ADC_INT_NUMBER1);
+    Interrupt_clearACKGroup(INTERRUPT_ACK_GROUP1);
+}
+```
+
+::: {.callout-note}
+## Atraso de uma amostra
+Como o DAC é escrito **depois** da leitura do ADC, $u(k)$ só afeta a saída a partir de
+$y(k+1)$: todo modelo discreto obtido com este padrão tem atraso de uma amostra.
+:::
+
+### Buffers de aquisição
+
+Para guardar os ensaios, os vetores ficam nos blocos de RAM global (RAMGS), declarados com
+`#pragma DATA_SECTION(y_buf, "ramgs0")`. Buffers grandes (milhares de amostras em `float`)
+podem exceder um único bloco: nesse caso, juntar blocos GS no arquivo `.cmd` do linker ou
+gravar em `uint16_t`.
+
+## Exportar dados do CCS para CSV
+
+1. Rodar o ensaio até o fim (p.ex. `ensaio_concluido = 1`) e **pausar** a execução;
+2. Na janela *Expressions*, adicionar os vetores (`y_buf`, `u_buf`);
+3. Exportar os vetores para **CSV** — o arquivo sai com um bloco por variável:
+
+```{.default}
+y_buf,,,u_buf,
+Sample,Value,,Sample,Value
+0,0.597802162,,0,0.600000024
+1,0.594871759,,1,0.600000024
+...
+```
+
+A exportação da lista de *Expressions* em JSON guarda só os **nomes** das variáveis, não os
+valores. O formato CSV acima é lido pela função `le_csv_ccs()` dos scripts de análise
+(`Notas/IdentificacaoSallenKeyPRBS/analise/plota_degrau.py`).
+
+## Conexões
+
+- [Nota 02 — Identificação do Filtro Sallen-Key](IdentificacaoSallenKeyPRBS/index.qmd) —
+  ensaios ao degrau e PRBS e identificação ARX usando os recursos desta nota;
+- [Controle do Inversor Trifásico](https://raphateixeira.github.io/ControleInversor3f/) —
+  exemplo de aplicação desta placa.
+
+## Referências
+
+- Texas Instruments. *LAUNCHXL-F28379D — C2000 Delfino LaunchPad — User's Guide* (SPRUI77).
+- Texas Instruments. *TMS320F2837xD Dual-Core Microcontrollers — Technical Reference Manual* (SPRUHM8).
+- Texas Instruments. *TMS320F2837xD Dual-Core Microcontrollers — Datasheet* (SPRS880).
+- Texas Instruments. *C2000Ware* — `driverlib/f2837xd/examples/`.

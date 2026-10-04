@@ -1,0 +1,43 @@
+---
+title: "Nota NN — Título da nota"
+subtitle: "Tópico — Assunto"
+description: "Uma frase sobre o que a nota cobre."
+author: "Raphael Teixeira"
+date: "AAAA-MM-DD"
+date-modified: last-modified
+categories: [C2000, CCS]
+placa: "LAUNCHXL-F28379D"
+ordem: NN
+status: rascunho        # rascunho | revisão | consolidada
+lang: pt-BR
+---
+
+[⬅ Índice do projeto](../index.qmd)
+
+## Objetivo
+
+<!-- TODO: o que esta nota cobre e onde se encaixa nos projetos. -->
+
+## Fundamentos
+
+<!-- TODO: periférico/conceito, registradores e funções da driverlib envolvidos. -->
+
+## Projeto no CCS
+
+<!-- TODO: pasta do projeto, configuração (SysConfig, linker cmd RAM/FLASH), trechos de código. -->
+
+```c
+// TODO: trecho principal do firmware
+```
+
+## Ensaio na bancada
+
+<!-- TODO: montagem, medições (osciloscópio/Expressions), figuras e resultados. -->
+
+## Conexões
+
+<!-- TODO: links para outras notas e para os repositórios ControleInversor3f/Notas. -->
+
+## Referências
+
+<!-- TODO: documentos TI (número SPRU/SPRS) e livros usados. -->

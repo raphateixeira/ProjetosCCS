@@ -1,0 +1,438 @@
+---
+title: "Nota 05 — Controle PI"
+subtitle: "Filtro Sallen-Key com a LaunchPad LAUNCHXL-F28379D: cancelamento polo-zero, erro nulo e windup"
+institute: "Universidade Federal do Pará"
+author: "Prof. Dr. Raphael Teixeira"
+date: "2026-10-01"
+date-modified: last-modified
+lang: pt
+format:
+  revealjs:
+    theme: [simple, ../../TemaRTx.scss]
+    self-contained: true
+    transition: fade
+    slide-number: true
+    center: false
+    width: 1600
+    height: 900
+    footer: " "
+    html-math-method: mathjax
+    code-line-numbers: false
+    title-slide-attributes:
+      data-background-image: "../../imgs/ufpa-colorido.png"
+      data-background-size: "5%"
+      data-background-position: "top 3% center"
+execute:
+  echo: false
+jupyter: python3
+---
+
+```{python}
+#| label: setup
+import sys
+from pathlib import Path
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy import signal
+from IPython.display import Markdown
+
+sys.path.insert(0, "analise")
+import controle_pi as pi
+cs = pi.cs
+sys.path.insert(0, "../ControleProporcional/analise")
+import controle_p as cp
+
+plt.style.use("../../estilo_graficos.mplstyle")
+AZUL, VERMELHO, VERDE, CINZA, LARANJA = "#1F3A5F", "#C0392B", "#2E8B57", "#5F6B7A", "#D68910"
+TS = pi.TS
+br = lambda x, n=2: f"{x:.{n}f}".replace(".", ",")
+mv = lambda x, n=1: br(1e3 * x, n)
+ms = lambda x: br(1e3 * x, 0)
+iae = lambda r, y: np.sum(np.abs(r - y)) * TS
+
+KP, KITS = pi.ganhos()
+E1 = pi.le_ensaio("dados/DadosControlePI01.csv")
+S1 = pi.previsto(E1)
+S1r = pi.previsto(E1, ruido=True)
+KC_ID, Z0_ID, RES_ID = pi.identifica_pi(E1)
+
+EA0 = pi.le_ensaio("dados/DadosPIsaturacaoAW0.csv")
+EA1 = pi.le_ensaio("dados/DadosPIsaturacaoAW1.csv")
+SA0 = pi.previsto(EA0, anti_windup=False, periodico=True)
+SA1 = pi.previsto(EA1, anti_windup=True, periodico=True)
+I0, V0 = pi.reconstroi(EA0, anti_windup=False)
+I1, V1 = pi.reconstroi(EA1, anti_windup=True)
+```
+
+## Roteiro
+
+1. **Projeto** do PI por **cancelamento polo-zero** a partir do ARX(1,3,1);
+2. **Firmware** `SK04ControlePI`: lei posicional, saturação e anti-windup por integração condicional;
+3. **Ensaio sem saturação** (onda quadrada 0,8 ↔ 1,2 V): erro nulo, medido × previsto, comparação
+   com o P;
+4. **Ensaio com saturação** (0,6 ↔ 1,8 V, nível alto inatingível): *windup* sem e com anti-windup.
+
+Modelo: [Nota 02](../IdentificacaoSallenKeyPRBS/index.qmd) · Planejamento: [Nota 03](../ControleSallenKey/index.qmd)
+(ensaios 2 e 3) · Controle P: [Nota 04](../ControleProporcional/index.qmd).
+
+# Projeto por cancelamento polo-zero
+
+## Ideia: o zero do PI sobre o polo da planta
+
+:::: {.columns}
+::: {.column width="50%"}
+Planta (ARX(1,3,1), Nota 02):
+
+$$
+G(z) = \frac{b_1 z^2 + b_2 z + b_3}{z^2\,(z - a_1)}, \qquad a_1 = 0{,}8156
+$$
+
+PI na forma de ganho e zero:
+
+$$
+C(z) = K_c\,\frac{z - z_0}{z - 1}
+$$
+
+Escolhendo $z_0 = a_1$, o zero do controlador **cancela** o polo da planta:
+
+$$
+L(z) = C(z)\,G(z) = K_c\,\frac{b_1 z^2 + b_2 z + b_3}{z^2\,(z - 1)}
+$$
+:::
+::: {.column width="50%"}
+- O polo lento da planta ($\tau \approx 24{,}5$ ms) **some** da malha: sobra um integrador puro
+  com os zeros de $B$ e o atraso;
+- Resta **um único parâmetro**, $K_c$, ajustado pela especificação
+  ($t_s$ = 50–60 ms, sem sobressinal);
+- Forma paralela (firmware):
+
+$$
+K_p = K_c\,z_0, \qquad K_i T_s = K_c\,(1 - z_0)
+$$
+
+$$
+T_i = \frac{K_p}{K_i} = \frac{z_0\,T_s}{1 - z_0} \approx 22\ \text{ms} \approx \tau
+$$
+:::
+::::
+
+## Escolha de $K_c$
+
+```{python}
+linhas = []
+for kc in [1.0, 1.25, 1.5, 1.75, 2.0, 2.5]:
+    s = cs.simula(pi.PIFirmware(kc, pi.Z0), cs.ref_quadrada(), ruido=False)
+    m = cs.metricas(s)
+    p = cs.polos_malha_fechada(np.array([kc, -kc * pi.Z0]), np.array([1.0, -1.0]))
+    p = [z for z in p if abs(z - cs.A1) > 1e-3]                      # tira o polo cancelado
+    dom = max(p, key=abs)
+    polo = br(dom.real, 3) if abs(dom.imag) < 1e-9 else f"{br(dom.real, 3)} ± j{br(abs(dom.imag), 3)}"
+    dest = "**" if kc == pi.KC else ""
+    linhas.append(f"| {dest}{br(kc, 2)}{dest} | {br(kc * pi.Z0, 3)} | {br(kc * (1 - pi.Z0) / TS, 1)} | {polo} | {ms(m['ts'])} | {br(m['os'], 1)} |")
+Markdown("| $K_c$ | $K_p$ | $K_i$ (s⁻¹) | polo dominante de malha fechada | $t_s$ (ms) | sobressinal (%) |\n"
+         "|---|---|---|---|---|---|\n" + "\n".join(linhas)
+         + "\n\nSimulação com o ARX(1,3,1), referência quadrada 0,8 ↔ 1,2 V. **Escolha: $K_c$ = 1,5** "
+           "($K_p$ = 1,223; $K_i$ = 55,3 s⁻¹) — o mesmo PI da Nota 03.")
+```
+
+A partir de $K_c \approx 2$ os polos de malha fechada ficam complexos e aparece sobressinal: o
+cancelamento não elimina o compromisso entre rapidez e amortecimento.
+
+## O que o cancelamento esconde
+
+```{python}
+#| fig-width: 15
+#| fig-height: 5
+# malha fechada com S = 1 − q⁻¹, R = T = Kc (1 − z0 q⁻¹): P = A S + B R
+A = np.array([1.0, -cs.A1]); Bq = np.r_[0.0, cs.B]
+S = np.array([1.0, -1.0]); R = pi.KC * np.array([1.0, -pi.Z0])
+Pcl = np.pad(np.convolve(A, S), (0, 2)) + np.convolve(Bq, R)
+n = 40
+ref = signal.dlsim(signal.dlti(np.convolve(Bq, R), Pcl, dt=TS), np.ones(n))[1].ravel()
+pert = signal.dlsim(signal.dlti(np.convolve(Bq, S), Pcl, dt=TS), np.ones(n))[1].ravel()
+t = np.arange(n) * TS * 1e3
+fig, (a1, a2) = plt.subplots(1, 2, figsize=(15, 5))
+a1.plot(t, ref, "o-", color=AZUL, ms=7); a1.set_title("degrau unitário na referência", fontsize=18)
+a2.plot(t, pert, "o-", color=VERMELHO, ms=7); a2.set_title("degrau unitário de perturbação na entrada da planta", fontsize=18)
+tau_lento = -TS / np.log(cs.A1)
+a2.plot(t, pert[np.argmax(pert)] * np.exp(-(t - t[np.argmax(pert)]) / (1e3 * tau_lento)) * (t >= t[np.argmax(pert)]),
+        "--", color=CINZA, lw=2.6, label=f"decaimento com τ = {br(1e3 * tau_lento, 1)} ms")
+a2.legend(fontsize=16)
+for ax in (a1, a2):
+    ax.set_xlabel("t (ms)"); ax.set_ylabel("y")
+fig.tight_layout()
+```
+
+O polo cancelado ($z = a_1$) **continua** no polinômio de malha fechada
+$P = AS + BR = (1 - a_1 q^{-1})\,[\dots]$: ele não aparece na resposta à **referência**, mas
+aparece na resposta a uma **perturbação na entrada**, que é eliminada só com a constante de tempo
+da planta (≈ 24,5 ms). E, se o polo real diferir do modelo, o cancelamento é imperfeito e deixa
+uma "cauda" lenta também no rastreamento.
+
+# Firmware `SK04ControlePI`
+
+## Lei de controle
+
+:::: {.columns}
+::: {.column width="55%"}
+```{.c}
+// C(z) = Kc (z - z0)/(z - 1) -> Kp = Kc*z0, Ki*Ts = Kc*(1 - z0)
+Kp   = Kc * z0;
+KiTs = Kc * (1.0f - z0);
+
+e = r - y;
+integ_novo = integ + KiTs * e;
+v = Kp * e + integ_novo;          // ação antes da saturação
+
+// anti-windup por integração condicional
+if ((anti_windup != 0U) &&
+    (((v > U_MAX) && (e > 0.0f)) || ((v < U_MIN) && (e < 0.0f))))
+    v = Kp * e + integ;           // integrador congelado
+else
+    integ = integ_novo;
+
+u = v;                            // saturação do atuador
+if (u > U_MAX) u = U_MAX;
+if (u < U_MIN) u = U_MIN;
+```
+:::
+::: {.column width="45%"}
+- Forma **posicional**: $I(k) = I(k-1) + K_iT_s\,e(k)$, $v = K_p e + I(k)$; na forma incremental,
+  $\Delta u = K_c\,e(k) - K_c z_0\,e(k-1)$;
+- `Kc`, `z0`, `anti_windup`, `r_centro`, `r_amp`, `n_meio`, `modo_continuo` e `reiniciar`
+  alteráveis pelo WATCH;
+- `modo_continuo = 1`: "osciloscópio" — buffer reescrito a cada período, com gatilho no início
+  de um período da referência;
+- grava $r$, $u$, $y$ e o integrador (`i_buf`).
+:::
+::::
+
+# Ensaio sem saturação
+
+## Ensaio (`DadosControlePI01.csv`)
+
+```{python}
+#| fig-width: 15
+#| fig-height: 6.5
+fig, (a1, a2) = plt.subplots(2, 1, figsize=(15, 6.5), sharex=True, gridspec_kw={"height_ratios": [3, 2]})
+a1.step(E1["t"], E1["r"], where="post", color="k", ls="--", lw=2.6, label="r")
+a1.plot(E1["t"], E1["y"], ".", color=VERMELHO, ms=7, label="y medido")
+a1.plot(E1["t"], S1["y"], color=AZUL, lw=2.6, label="y previsto")
+a2.step(E1["t"], E1["u"], where="post", color=VERMELHO, lw=2.6, label="u medido")
+a2.step(E1["t"], S1["u"], where="post", color=AZUL, lw=1.5, ls="--", label="u previsto")
+a1.set_ylabel("V"); a2.set_ylabel("u (V)"); a2.set_xlabel("t (s)")
+a1.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), frameon=False, ncol=3); a2.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), frameon=False, ncol=2)
+fig.tight_layout()
+```
+
+```{python}
+Markdown(f"Referência 0,8 ↔ 1,2 V (60 amostras por nível, gravação única). **FIT medido × previsto = "
+         f"{br(pi.fit(E1['y'], S1['y']), 1)} %**. Parâmetros identificados nos próprios dados: "
+         f"$K_c$ = {br(KC_ID, 4)}, $z_0$ = {br(Z0_ID, 4)} (resíduo {RES_ID:.0e} V) — exatamente os do firmware.")
+```
+
+## Erro nulo em regime: P × PI
+
+```{python}
+#| fig-width: 15
+#| fig-height: 5.5
+P = {kp: cp.le_ensaio(f"../ControleProporcional/dados/DadosControleP0{kp}.csv") for kp in (1, 2)}
+fig, ax = plt.subplots(figsize=(15, 5.5))
+ax.step(E1["t"], E1["r"], where="post", color="k", ls="--", lw=2.6, label="r")
+ax.plot(P[1]["t"], P[1]["y"], color=CINZA, lw=2.6, label="P, Kp = 1 (Nota 04)")
+ax.plot(E1["t"], E1["y"], color=VERMELHO, lw=2.6, label="PI, Kc = 1,5")
+ax.set_xlim(0, 0.75); ax.set_xlabel("t (s)"); ax.set_ylabel("y (V)"); ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), frameon=False, ncol=3)
+fig.tight_layout()
+```
+
+```{python}
+linhas = []
+for k0, k1, nivel in cp.patamares(E1["r"]):
+    linhas.append(f"| {br(nivel, 1)} | {mv(nivel - P[1]['y'][k0 + 30:k1].mean())} | "
+                  f"{mv(nivel - E1['y'][k0 + 30:k1].mean(), 2)} | {mv(E1['y'][k0 + 30:k1].std(), 2)} |")
+Markdown("| $r$ (V) | erro P, $K_p$ = 1 (mV) | erro PI (mV) | desvio de y no PI (mV) |\n|---|---|---|---|\n" + "\n".join(linhas)
+         + "\n\nO integrador zera o erro: no PI, o erro médio em regime fica abaixo de 0,5 mV — menor que um "
+           "nível do ADC (0,73 mV) e muito menor que o ruído.")
+```
+
+## Transitório: média dos três ciclos
+
+```{python}
+#| fig-width: 15
+#| fig-height: 5.2
+fig, eixos = plt.subplots(1, 2, figsize=(15, 5.2))
+tab = []
+for ax, sent, tit in zip(eixos, (1, -1), ("subidas (0,8 → 1,2 V)", "descidas (1,2 → 0,8 V)")):
+    ym, n = cp.media_ciclos(E1["y"], E1["r"], sent); ys, _ = cp.media_ciclos(S1["y"], E1["r"], sent)
+    um, _ = cp.media_ciclos(E1["u"], E1["r"], sent)
+    tt = (np.arange(len(ym)) - 1) * TS * 1e3
+    ax.plot(tt, ym, "o-", color=VERMELHO, ms=7, lw=1.5, label=f"y medido (média de {n})")
+    ax.plot(tt, ys, color=AZUL, lw=3, label="y previsto")
+    ax.set_xlim(-10, 150); ax.set_xlabel("tempo após o degrau (ms)"); ax.set_title(tit, fontsize=18)
+    for faixa in (0.02, 0.05):
+        tab.append((tit, faixa, cp.acomodacao(ym, faixa), cp.acomodacao(ys, faixa)))
+eixos[0].set_ylabel("y (V)"); eixos[0].legend(fontsize=16)
+fig.tight_layout()
+```
+
+```{python}
+Markdown("| | faixa | $t_s$ medido (ms) | $t_s$ previsto (ms) | sobressinal medido (%) | previsto (%) |\n|---|---|---|---|---|---|\n"
+         + "\n".join(f"| {t} | {br(100 * f, 0)} % | {ms(m[0])} | {ms(p[0])} | {br(m[1], 1)} | {br(p[1], 1)} |" for t, f, m, p in tab)
+         + "\n\nCom o PI a saída percorre o degrau inteiro (0,4 V): a faixa de 2 % (±8 mV) já é bem maior que o "
+           "ruído, e a especificação ($t_s$ ≈ 55 ms, sem sobressinal) pode ser verificada diretamente.")
+```
+
+## Esforço de controle e ruído
+
+```{python}
+su = np.mean([E1["u"][k0 + 30:k1].std() for k0, k1, _ in cp.patamares(E1["r"])])
+sy = np.mean([E1["y"][k0 + 30:k1].std() for k0, k1, _ in cp.patamares(E1["r"])])
+du0 = np.max(np.abs(np.diff(E1["u"])))
+Markdown(f"""
+| Grandeza | PI ($K_c$ = 1,5) | P ($K_p$ = 1) | P ($K_p$ = 2) |
+|---|---|---|---|
+| erro em regime em 1,2 V | ≈ 0 mV | 102 mV | 68 mV |
+| desvio de $u$ nos patamares | {mv(su, 2)} mV | 1,85 mV | 3,82 mV |
+| razão $\\sigma_u/\\sigma_y$ | {br(su / sy, 2)} | 1,00 | 2,07 |
+| maior salto de $u$ numa amostra | {mv(du0, 0)} mV | — | — |
+
+- Logo após cada degrau, $u$ salta $K_c\\,\\Delta r$ = 1,5 × 0,4 = 0,6 V e depois volta
+  devagar: o integrador assume a parte de regime;
+- O ruído em $u$ é ≈ 1,4 vezes o de $y$ — próximo de $K_c$ = 1,5, o ganho do PI em alta
+  frequência: o PI zera o erro **sem** precisar do ganho alto que o P exigiria.
+""")
+```
+
+# Ensaio com saturação
+
+## Referência inatingível
+
+- Modo contínuo, `r_centro` = 1,2 V, `r_amp` = 0,6 V, `n_meio` = 100: onda quadrada
+  **0,6 ↔ 1,8 V** com 500 ms em cada nível;
+- Com $u$ = 1,7 V, o modelo prevê saída máxima de
+  `{python} br(pi.Y_MAX, 3)` V: **1,8 V é inatingível**. Enquanto $r$ = 1,8 V, o erro não zera
+  e o atuador fica saturado;
+- Dois ensaios iguais: `anti_windup = 0` (`DadosPIsaturacaoAW0.csv`) e `anti_windup = 1`
+  (`DadosPIsaturacaoAW1.csv`);
+- O integrador (`i_buf`) não foi exportado: ele é **reconstruído** aplicando a lei do firmware aos
+  $r$ e $y$ gravados (estado inicial tirado da primeira amostra não saturada).
+
+```{python}
+Markdown(f"Saída máxima medida: {br(EA0['y'].max(), 3)} V (sem anti-windup) e {br(EA1['y'].max(), 3)} V "
+         f"(com anti-windup) — um pouco acima dos {br(pi.Y_MAX, 3)} V do modelo: perto da saturação o "
+         f"ganho real da planta é ligeiramente maior que o do ARX, identificado em torno de 1,0 V.")
+```
+
+## Sem anti-windup
+
+```{python}
+#| fig-width: 15
+#| fig-height: 6.8
+def fig_saturacao(E, S, I, V, titulo):
+    fig, (a1, a2) = plt.subplots(2, 1, figsize=(15, 6.8), sharex=True, gridspec_kw={"height_ratios": [1, 1]})
+    a1.step(E["t"], E["r"], where="post", color="k", ls="--", lw=2.6, label="r")
+    a1.plot(E["t"], E["y"], color=VERMELHO, lw=2.6, label="y medido")
+    a1.plot(E["t"], S["y"], color=AZUL, lw=2.6, ls=":", label="y previsto")
+    a1.axhline(pi.Y_MAX, color=CINZA, lw=1.5, ls="-."); a1.text(0.02, pi.Y_MAX - 0.12, "y máx ≈ 1,69 V", fontsize=16, color=CINZA)
+    a2.step(E["t"], E["u"], where="post", color=VERMELHO, lw=2.6, label="u aplicado")
+    a2.plot(E["t"], V, color=LARANJA, lw=2.6, ls="--", label="v calculado (reconstruído)")
+    a2.plot(E["t"], I, color=VERDE, lw=2.6, label="integrador I (reconstruído)")
+    a2.axhline(cs.U_MAX, color="k", ls=":", lw=1.5)
+    a1.set_ylabel("V"); a2.set_ylabel("V"); a2.set_xlabel("t (s)")
+    a1.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), frameon=False, ncol=4, title=titulo, title_fontproperties={"weight": "bold", "size": 18})
+    a2.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), frameon=False, ncol=3)
+    fig.tight_layout()
+    return fig
+fig = fig_saturacao(EA0, SA0, I0, V0, "anti_windup = 0")
+```
+
+Enquanto $r$ = 1,8 V, o erro fica positivo e o integrador **cresce sem parar**: chega a
+`{python} br(np.nanmax(I0), 2)` V, e o comando calculado a `{python} br(np.nanmax(V0), 2)` V — muito
+além dos 1,7 V que o DAC aplica.
+
+## Com anti-windup (integração condicional)
+
+```{python}
+#| fig-width: 15
+#| fig-height: 6.8
+fig = fig_saturacao(EA1, SA1, I1, V1, "anti_windup = 1")
+```
+
+O integrador **congela** sempre que o comando satura e o erro empurra para fora: fica em
+≈ `{python} br(np.nanmax(I1), 2)` V, e $u$ "encosta" no limite (oscila logo abaixo de 1,7 V, ora
+integrando, ora congelado).
+
+## Windup: comparação
+
+```{python}
+def linha(nome, E, S, V, I):
+    r, y, u = E["r"], E["y"], E["u"]
+    def ts_desc(yy):
+        k0 = 100
+        k = next((k for k in range(k0, 200) if np.all(np.abs(yy[k:200] - 0.6) < 0.02 * 1.2)), None)
+        return (k - k0) * TS if k is not None else np.nan
+    return (f"| {nome} | {ms(pi.preso_na_saturacao(u, 100))} / {ms(pi.preso_na_saturacao(S['u'], 100))} | "
+            f"{ms(ts_desc(y))} / {ms(ts_desc(S['y']))} | {br(1e3 * iae(r[100:200], y[100:200]), 1)} | "
+            f"{br(np.nanmax(V), 2)} | {br(np.nanmax(I), 2)} | {int(np.sum(u >= cs.U_MAX - 1e-6))} / {int(np.sum(S['u'] >= cs.U_MAX - 1e-6))} | "
+            f"{br(pi.fit(y, S['y']), 1)} % |")
+Markdown("| Ensaio | $u$ preso em 1,7 V após a descida, med./prev. (ms) | $t_s$ da descida (2 %), med./prev. (ms) | IAE na descida (mV·s) | maior $v$ (V) | maior $I$ (V) | amostras em 1,7 V, med./prev. | FIT |\n"
+         "|---|---|---|---|---|---|---|---|\n" + linha("sem anti-windup", EA0, SA0, V0, I0) + "\n" + linha("com anti-windup", EA1, SA1, V1, I1))
+```
+
+```{python}
+#| fig-width: 15
+#| fig-height: 4.8
+fig, (a1, a2) = plt.subplots(1, 2, figsize=(15, 4.8))
+for E, cor, nome in ((EA0, VERMELHO, "sem anti-windup"), (EA1, AZUL, "com anti-windup")):
+    t = (np.arange(len(E["y"])) - 100) * TS * 1e3
+    a1.plot(t, E["y"], color=cor, lw=3, label=nome); a2.step(t, E["u"], where="post", color=cor, lw=2.6, label=nome)
+a1.step(t, EA0["r"], where="post", color="k", ls="--", lw=1.5, label="r")
+for ax in (a1, a2):
+    ax.set_xlim(-50, 250); ax.set_xlabel("tempo após a descida de r (ms)")
+a1.set_ylabel("y (V)"); a2.set_ylabel("u (V)"); a1.legend(loc="center right"); a1.set_ylim(0.5, 1.9)
+fig.tight_layout()
+```
+
+## Leitura do windup
+
+- **Sem anti-windup**: quando $r$ desce para 0,6 V, o integrador "carregado" mantém $v$ acima de
+  1,7 V; $u$ fica **preso** na saturação por dezenas de milissegundos e, mesmo depois de sair, a
+  descida é lenta — o integrador ainda precisa descarregar. A descida leva cerca de **2,3 vezes**
+  mais que com anti-windup;
+- **Com anti-windup**: o integrador congela no valor que o atuador consegue sustentar; quando $r$
+  desce, $u$ sai da saturação **na hora** e a descida tem o tempo normal da malha;
+- **Detalhe de implementação**: com o anti-windup ligado, $u$ fica em ≈ 1,672 V no patamar alto
+  (e $y$ ≈ 1,667 V), contra 1,700 V (e 1,694 V) sem ele. Quando congela, o firmware recalcula
+  $v = K_p e + I(k-1)$ com o integrador **antigo**, que já estava abaixo do limite — $u$ nunca
+  chega a 1,7 V. Correção: congelar só o **estado** e manter $v = K_p e + I_{novo}$ para a saída
+  (`u = sat(v)` continua em 1,7 V);
+- **Na subida** os dois ensaios são praticamente iguais: com $u$ saturado, nenhum controlador acelera a planta
+  — o anti-windup não muda o que o atuador entrega, só o que o controlador **lembra**;
+- A previsão do modelo acerta o windup: tempo preso, tempo de descida e saída (FIT ≥ 98 %).
+
+## Conclusões
+
+```{python}
+Markdown(f"""
+- **Projeto por cancelamento polo-zero**: com $z_0 = a_1$, o PI fica com um único parâmetro
+  ($K_c$ = 1,5) e atende a especificação — o que foi confirmado na placa (FIT
+  {br(pi.fit(E1['y'], S1['y']), 1)} %);
+- **Erro nulo**: o integrador elimina o erro de 68–102 mV do controle P sem ganho alto; o ruído em
+  $u$ fica no nível do P com $K_p \\approx 1{{,}}5$;
+- **Custo do cancelamento**: o polo cancelado (τ ≈ 24,5 ms) continua na resposta a perturbações na
+  entrada da planta e depende de o modelo estar certo;
+- **Windup**: com referência inatingível, o integrador sem proteção chega a {br(np.nanmax(I0), 1)} V e prende o
+  atuador na saturação depois da descida; a **integração condicional** resolve com um `if` — mas,
+  como implementada, deixa $u$ ≈ 28 mV abaixo do limite (corrigir no firmware);
+- **Próximos ensaios**: PI com retrocálculo (*back-calculation*) e a forma RST (Nota 03, ensaios 3 e
+  6); perturbação na entrada para observar o polo cancelado.
+""")
+```
+
+::: {.callout-note}
+## Dados
+`dados/DadosControlePI01.csv` (sem saturação), `dados/DadosPIsaturacaoAW0.csv` e
+`dados/DadosPIsaturacaoAW1.csv` (0,6 ↔ 1,8 V, sem e com anti-windup). Firmware em
+`ProjetosSK/SK04ControlePI/`. Para exportar no modo contínuo, pausar o
+programa antes (Nota 04).
+:::

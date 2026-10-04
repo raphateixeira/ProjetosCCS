@@ -1,0 +1,468 @@
+---
+title: "Nota 06 — Controle Preditivo"
+subtitle: "Filtro Sallen-Key com a LaunchPad LAUNCHXL-F28379D: MPC convencional com o modelo ARX, em Ts = 1 ms"
+institute: "Universidade Federal do Pará"
+author: "Prof. Dr. Raphael Teixeira"
+date: "2026-10-02"
+date-modified: last-modified
+lang: pt
+format:
+  revealjs:
+    theme: [simple, ../../TemaRTx.scss]
+    self-contained: true
+    transition: fade
+    slide-number: true
+    center: false
+    width: 1600
+    height: 900
+    footer: " "
+    html-math-method: mathjax
+    code-line-numbers: false
+    title-slide-attributes:
+      data-background-image: "../../imgs/ufpa-colorido.png"
+      data-background-size: "5%"
+      data-background-position: "top 3% center"
+execute:
+  echo: false
+jupyter: python3
+---
+
+```{python}
+#| label: setup
+import sys
+import numpy as np
+import matplotlib.pyplot as plt
+from IPython.display import Markdown
+
+sys.path.insert(0, "analise")
+import convencional as cv
+
+plt.style.use("../../estilo_graficos.mplstyle")
+AZUL, VERMELHO, VERDE, CINZA, LARANJA = "#1F3A5F", "#C0392B", "#2E8B57", "#5F6B7A", "#D68910"
+TS = cv.TS
+CPM = 4                                  # ciclos por multiplicação (medido no SK08: ≈ 4)
+CICLOS_TS = 200_000                      # 1 ms a 200 MHz
+br = lambda x, n=2: f"{x:.{n}f}".replace(".", ",")
+mil = lambda x: f"{int(round(x)):,}".replace(",", ".")
+
+NP, NU, LAM, NIT = 60, 4, 3.0, 50        # main.c do SK07
+r = cv.referencia()
+
+def mpc(**kw):
+    return cv.MPCConvencional(**{**dict(Np=NP, Nu=NU, lam=LAM, n_iter=NIT), **kw})
+
+def otimo(**kw):
+    """Mesmo controlador, mas iterando até convergir (referência de comparação)."""
+    return mpc(**{**dict(n_iter=5000, tol=1e-12), **kw})
+
+def figura(sims, janela=(0, 0.8), altura=5.6):
+    fig, ax = plt.subplots(2, 1, figsize=(15, altura), sharex=True, gridspec_kw={"height_ratios": [3, 2]})
+    cores = [AZUL, VERMELHO, VERDE, LARANJA]
+    for i, (nome, s) in enumerate(sims.items()):
+        if i == 0:
+            ax[0].step(s["t"], s["r"], where="post", color="k", ls="--", lw=2, label="r")
+        ax[0].plot(s["t"], s["y"], color=cores[i], lw=2.6, label=nome)
+        ax[1].step(s["t"], s["u"], where="post", color=cores[i], lw=2.4)
+    ax[0].set_ylabel("y (V)"); ax[1].set_ylabel("u (V)"); ax[1].set_xlabel("t (s)")
+    ax[0].legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), frameon=False, ncol=len(sims) + 1)
+    ax[0].set_xlim(*janela)
+    fig.tight_layout()
+    return fig
+```
+
+## Roteiro
+
+1. **A ideia** do controle preditivo;
+2. **O modelo**: o ARX identificado e por que prever as variações;
+3. **O custo**: $\lambda$, o horizonte $N_p$ e os movimentos $N_u$;
+4. **A minimização** pelo método do gradiente — e se cabe em 1 ms;
+5. **O firmware** `SK07MPCNumerico` e o ensaio na placa.
+
+Modelo: [Nota 02](../IdentificacaoSallenKeyPRBS/index.qmd) · Placa: [Nota 01](../Nota01LaunchPadF28379D.qmd).
+
+# A ideia
+
+## Controle preditivo em quatro passos
+
+A cada amostra $k$ (a cada 1 ms):
+
+1. **Prever**: com o modelo, calcular como a saída vai evoluir nos próximos instantes para um
+   **plano** de movimentos de $u$;
+2. **Avaliar**: medir quão bom é o plano com uma **função custo** $J$ — erro em relação à
+   referência e esforço do atuador;
+3. **Escolher**: ajustar o plano para deixar $J$ o menor possível;
+4. **Aplicar só o primeiro movimento** do plano — e, na amostra seguinte, repetir tudo com a nova
+   medida.
+
+## O que o controlador "vê" em um instante
+
+```{python}
+#| fig-width: 15
+#| fig-height: 5.1
+# simula até logo depois do primeiro degrau da referência e congela o plano daquele instante
+k_ver = 110
+c = otimo()
+planta = cv.Planta(r[0])
+c.reinicia(r[0], planta.u[0])
+yh, uh = [], []
+for k in range(k_ver + 1):
+    y = planta.saida(); yh.append(y)
+    u = min(max(c.passo_ctrl(r[k], y), 0.0), 1.7)
+    if k < k_ver:
+        c.aplicado(u); planta.aplica(u); uh.append(u)
+plano = c.dU.copy()
+yprev = c.preve(plano)
+uplano = c.u[0] + np.cumsum(plano)
+t = np.arange(len(r)) * TS * 1e3
+fig, (a1, a2) = plt.subplots(2, 1, figsize=(15, 5.1), sharex=True, gridspec_kw={"height_ratios": [3, 2]})
+a1.step(t[:k_ver + NP + 1], r[:k_ver + NP + 1], where="post", color="k", ls="--", lw=2, label="referência r")
+a1.plot(t[:k_ver + 1], yh, "o-", color=AZUL, ms=4, lw=2, label="y medido (passado)")
+a1.plot(t[k_ver + 1:k_ver + NP + 1], yprev, color=VERMELHO, lw=3, label="ŷ previsto")
+a1.axvspan(t[k_ver], t[k_ver + NP], color=VERMELHO, alpha=0.06)
+a1.text(t[k_ver] + 15, 0.83, f"horizonte de previsão: Np = {NP} amostras", fontsize=16, color=VERMELHO)
+a2.step(t[:k_ver], uh, where="post", color=AZUL, lw=2.4, label="u aplicado")
+a2.step(np.r_[t[k_ver:k_ver + NU], t[k_ver + NP]], np.r_[uplano, uplano[-1]], where="post", color=VERMELHO, lw=3, label="u planejado")
+a2.axvspan(t[k_ver], t[k_ver + NU], color=LARANJA, alpha=0.25)
+a2.text(t[k_ver] + 6, 0.95, f"Nu = {NU} movimentos; depois, u fica constante", fontsize=16, color=LARANJA)
+for ax in (a1, a2):
+    ax.axvline(t[k_ver], color=CINZA, lw=1.5)
+a1.set_xlim(85, 175); a1.set_ylabel("y (V)"); a2.set_ylabel("u (V)"); a2.set_xlabel("t (ms)")
+a1.legend(loc="lower right", fontsize=14); a2.legend(loc="upper right", fontsize=14)
+fig.tight_layout()
+```
+
+No instante $k$ (linha vertical): o passado é medido; o futuro é **previsto** para o plano escolhido.
+O plano não precisa ser perfeito — só o 1º movimento é aplicado, e o plano é refeito na amostra seguinte.
+
+# O modelo
+
+## O modelo ARX identificado
+
+Nota 02, $T_s$ = 1 ms, identificado com a PRBS:
+
+$$
+y(k) = a_1\,y(k-1) + a_2\,y(k-2) + b_1\,u(k-1) + b_2\,u(k-2) + c
+$$
+
+```{python}
+Markdown(f"- $a_1$ = {br(cv.a1, 4)}, $a_2$ = {br(cv.a2, 4)}, $b_1$ = {br(cv.b1, 5)}, $b_2$ = {br(cv.b2, 5)};\n"
+         f"- $c$: termo constante, que depende do ponto de operação em que o modelo foi identificado;\n"
+         f"- ganho estático ≈ {br(cv.B.sum() / (1 - cv.A.sum()), 3)}; constante de tempo dominante ≈ 26 ms;\n"
+         "- $u(k)$ só afeta $y(k+1)$: o atraso de uma amostra do laço do firmware.")
+```
+
+## Prever as variações
+
+Subtraindo a equação em $k-1$ da equação em $k$, o termo constante $c$ some:
+
+$$
+\Delta y(k) = a_1\,\Delta y(k-1) + a_2\,\Delta y(k-2) + b_1\,\Delta u(k-1) + b_2\,\Delta u(k-2)
+$$
+
+com $\Delta y(k) = y(k) - y(k-1)$ e $\Delta u(k) = u(k) - u(k-1)$.
+
+- O controlador prevê **quanto a saída vai mudar** a partir da medida atual, e soma as mudanças
+  a $y(k)$;
+- Não precisa do ponto de operação nem do termo $c$;
+- Os movimentos do plano já são **variações** de $u$: $\Delta u(k), \Delta u(k+1), \ldots$
+
+## Por que as variações? Erro de modelo
+
+```{python}
+#| fig-width: 15
+#| fig-height: 5
+sims = {}
+for forma, nome in (("absoluta", "prevendo y"), ("variacoes", "prevendo Δy")):
+    sims[nome] = cv.simula(otimo(forma=forma), r, ruido=False, ganho=1.05)
+fig = figura(sims, janela=(0.05, 0.5), altura=5)
+e_abs = 1.2 - sims["prevendo y"]["y"][280:300].mean()
+```
+
+```{python}
+Markdown(f"Planta com ganho **5 % maior** que o do modelo. Prevendo os valores de $y$, sobra um erro "
+         f"permanente de {br(1e3 * abs(e_abs), 0)} mV; prevendo as variações, a saída chega exatamente à "
+         "referência — o modelo nunca é perfeito, e isso não importa no regime.")
+```
+
+# O custo
+
+## A função custo
+
+$$
+J = \sum_{j=1}^{N_p}\big[r(k) - \hat y(k+j)\big]^2 \;+\; \lambda\sum_{i=0}^{N_u-1}\Delta u(k+i)^2
+$$
+
+- **1º termo**: o erro previsto entre a referência e a saída, nos próximos $N_p$ instantes;
+- **2º termo**: o tamanho dos movimentos de $u$ — o esforço do atuador;
+- $\lambda$ **pondera** um contra o outro:
+  - $\lambda$ pequeno: o controlador corre atrás da referência com movimentos grandes;
+  - $\lambda$ grande: movimentos suaves, resposta mais lenta.
+
+## $N_p$ e $N_u$
+
+- $N_p$ — **horizonte de previsão**: quantas amostras à frente o controlador olha;
+- $N_u$ — **movimentos planejados**: quantos valores futuros de $\Delta u$ ele escolhe; depois
+  deles, $u$ fica constante até o fim do horizonte;
+- O plano tem só $N_u$ incógnitas: $\Delta u(k), \ldots, \Delta u(k+N_u-1)$;
+- **Escolha**: $N_p$ = 60 (60 ms) e $N_u$ = 4.
+
+## Como escolher $N_p$
+
+```{python}
+linhas = []
+for Np in [10, 20, 40, 60, 100]:
+    s = cv.simula(otimo(Np=Np), r, ruido=False)
+    m = cv.metricas(s)
+    d = "**" if Np == NP else ""
+    linhas.append(f"| {d}{Np}{d} | {d}{Np}{d} ms | {br(1e3 * m['ts'], 0)} | {br(m['os'], 1)} | {br(m['u_max'], 2)} |")
+Markdown("| $N_p$ (amostras) | horizonte | $t_s$ (ms) | sobressinal (%) | maior u (V) |\n|---|---|---|---|---|\n" + "\n".join(linhas))
+```
+
+- A planta leva ≈ 100 ms para acomodar sozinha (constante de tempo ≈ 26 ms);
+- $N_p$ deve cobrir a parte importante da resposta da malha fechada (≈ 50 ms): **60 ms basta**;
+- Horizonte muito curto: o controlador "não enxerga" o fim da subida e exagera.
+
+## Como escolher $N_u$
+
+```{python}
+linhas = []
+for Nu in [1, 2, 4, 8]:
+    s = cv.simula(otimo(Nu=Nu), r, ruido=False)
+    m = cv.metricas(s)
+    d = "**" if Nu == NU else ""
+    linhas.append(f"| {d}{Nu}{d} | {br(1e3 * m['ts'], 0)} | {br(m['os'], 1)} | {mil(mpc(Nu=Nu).operacoes(1))} |")
+Markdown("| $N_u$ | $t_s$ (ms) | sobressinal (%) | multiplicações por iteração |\n|---|---|---|---|\n" + "\n".join(linhas))
+```
+
+- Mais movimentos dão mais liberdade, mas o ganho satura rápido: **4 bastam**;
+- Cada incógnita a mais custa tempo em cada iteração do gradiente.
+
+## O peso $\lambda$
+
+```{python}
+#| fig-width: 15
+#| fig-height: 5.6
+fig = figura({f"λ = {br(l, 0)}": cv.simula(otimo(lam=l), r, ruido=False) for l in (1.0, 3.0, 10.0)},
+             janela=(0.05, 0.45))
+```
+
+**Escolha: $\lambda$ = 3** — acomodação ≈ 50 ms sem sobressinal (a especificação das Notas 03 a 05).
+
+# A minimização
+
+## O método do gradiente
+
+- Com $N_u$ = 4, $J$ é uma função de 4 variáveis com a forma de uma **tigela**: tem um único
+  ponto mais baixo;
+- O **gradiente** $\nabla J$ aponta para onde $J$ sobe mais depressa; um passo no sentido
+  contrário desce:
+$$
+\Delta\mathbf u \;\leftarrow\; \Delta\mathbf u - \text{passo}\cdot\nabla J
+$$
+- A derivada de $J$ em relação a cada movimento usa a **resposta ao degrau** $s_j$ do modelo
+  (quanto $\hat y(k+j)$ muda por unidade de $\Delta u(k)$), calculada uma vez na inicialização:
+$$
+\frac{1}{2}\frac{\partial J}{\partial \Delta u(k+i)} = -\sum_{j} s_{j-i}\,\big[r - \hat y(k+j)\big] + \lambda\,\Delta u(k+i)
+$$
+
+## O gradiente passo a passo
+
+```{python}
+#| fig-width: 15
+#| fig-height: 5.6
+# instante do degrau, plano de 2 movimentos para poder desenhar J
+c2 = otimo(Nu=2)
+c2.reinicia(0.8, cv.u_equilibrio(0.8))
+rr = 1.2
+x = np.zeros(2); caminho = [x.copy()]
+for _ in range(60):
+    g, _ = c2.gradiente(x, rr)
+    x = x - c2.passo * g
+    caminho.append(x.copy())
+caminho = np.array(caminho)
+xo = caminho[-1]
+for _ in range(5000):
+    g, _ = c2.gradiente(xo, rr); xo = xo - c2.passo * g
+g0 = np.linspace(-0.05, 0.6, 160); g1 = np.linspace(-0.35, 0.35, 160)
+Jg = np.array([[c2.custo(np.array([a, b]), rr) for a in g0] for b in g1])
+fig, (a1, a2) = plt.subplots(1, 2, figsize=(15, 5.6), gridspec_kw={"width_ratios": [1.2, 1]})
+Jmin = c2.custo(xo, rr)
+a1.contour(g0, g1, Jg - Jmin, levels=np.geomspace(1e-4, 0.5 * (Jg - Jmin).max(), 14), colors=CINZA, linewidths=1)
+a1.plot(caminho[:, 0], caminho[:, 1], "o-", color=VERMELHO, ms=4, lw=1.8, label="iterações")
+a1.plot(*xo, "*", color=VERDE, ms=22, label="mínimo")
+a1.set_xlabel("Δu(k) (V)"); a1.set_ylabel("Δu(k+1) (V)"); a1.legend(loc="upper right")
+Jc = [c2.custo(p, rr) for p in caminho]
+a2.semilogy(np.arange(len(Jc)), np.array(Jc) - c2.custo(xo, rr) + 1e-9, color=VERMELHO, lw=2.6)
+a2.set_xlabel("iteração"); a2.set_ylabel("J − J mínimo")
+fig.tight_layout()
+```
+
+Exemplo com 2 movimentos, no instante em que a referência sobe: cada iteração desce a tigela.
+Os primeiros passos fazem quase todo o trabalho; o resto é ajuste fino.
+
+## Quantas iterações por amostra?
+
+```{python}
+ref = cv.simula(otimo(), r, ruido=False)
+linhas = []
+for n in [10, 20, 50, 100]:
+    s = cv.simula(mpc(n_iter=n), r, ruido=False); m = cv.metricas(s)
+    mac = mpc().operacoes(n)
+    d = "**" if n == NIT else ""
+    linhas.append(f"| {d}{n}{d} | {br(1e3 * m['ts'], 0)} | {br(1e3 * np.abs(s['u'] - ref['u']).max(), 0)} | "
+                  f"{mil(mac)} | {br(100 * CPM * mac / CICLOS_TS, 0)} % |")
+mo = cv.metricas(ref)
+sc = cv.simula(mpc(n_iter=5000, tol=1e-8), r, ruido=False)
+nmax = sc["iters"].max()
+linhas.append(f"| até convergir (até {nmax}) | {br(1e3 * mo['ts'], 0)} | 0 | "
+              f"{mil(mpc().operacoes(nmax))} | {br(100 * CPM * mpc().operacoes(nmax) / CICLOS_TS, 0)} % |")
+Markdown("| iterações por amostra | $t_s$ (ms) | maior diferença de u para o ótimo (mV) | multiplicações | fração de 1 ms |\n"
+         "|---|---|---|---|---|\n" + "\n".join(linhas))
+```
+
+Cada iteração simula o modelo 60 passos e calcula 4 derivadas: ≈ 490 multiplicações ≈ 2 000
+ciclos ≈ **10 µs** (≈ 4 ciclos por multiplicação, medido no SK08).
+
+## O método é viável?
+
+- **Convergir completamente** nas trocas da referência levaria centenas de iterações: não cabe
+  em 1 ms;
+- Mas **não é preciso** convergir: com **50 iterações por amostra** (≈ 0,5 ms) a resposta fica a
+  poucos milissegundos da ótima — os primeiros passos fazem quase todo o trabalho;
+- Cada amostra parte do plano da amostra anterior: a melhoria continua no instante seguinte;
+- Número **fixo** de iterações → tempo de cálculo **constante**: bom para um laço de 1 ms;
+- É o preço de resolver numericamente a cada amostra; a medida na placa confirma (ou não) a
+  estimativa.
+
+## Ruído de medida
+
+```{python}
+#| fig-width: 15
+#| fig-height: 5
+sr = {f"λ = {br(l, 0)}": cv.simula(mpc(lam=l), r) for l in (3.0, 30.0)}
+fig = figura(sr, janela=(0.05, 0.75), altura=5)
+```
+
+```{python}
+Markdown("Com o ruído do ADC (1,9 mV), $y$ continua limpo, mas $u$ fica ruidoso: a previsão parte da "
+         "medida. Desvio de $u$ em regime: "
+         + ", ".join(f"{br(1e3 * cv.metricas(s)['std_u'], 0)} mV ({n})" for n, s in sr.items())
+         + ". Um $\\lambda$ maior reduz o ruído, ao custo de uma resposta mais lenta.")
+```
+
+# Firmware `SK07MPCNumerico`
+
+## Parâmetros no `main.c`
+
+```{.c}
+const ParametrosMPC p = {
+    .modelo = {           // ARX, Ts = 1 ms (Nota 02)
+        .a1 = 1.60918827f, .a2 = -0.62250084f,
+        .b1 = 0.01096776f, .b2 = 0.00237673f,
+    },
+    .Np       = 60,       // horizonte de previsao: 60 ms
+    .Nu       = 4,        // movimentos planejados
+    .lambda   = 3.0f,     // peso de du
+    .nIter    = 50,       // iteracoes do gradiente por amostra
+    .uMin     = 0.0f,     // limites do atuador [V]
+    .uMax     = 1.7f,
+};
+```
+
+Na inicialização: a resposta ao degrau $s_j$ do modelo e o tamanho do passo do gradiente.
+
+## Previsão em C
+
+Simula o modelo nas variações, a partir das medidas, para o plano `dU`:
+
+```{.c}
+static void Preve(void)
+{
+    float dyA = y0m - y1m, dyB = y1m - y2m;   // dy(k), dy(k-1) medidos
+    float duAnt = u1 - u2, yy = y0m;          // du(k-1); parte de y(k)
+    for (j = 0U; j < Np; j++) {
+        du = (j < Nu) ? dU[j] : 0.0f;         // depois de Nu, u constante
+        dy = a1 * dyA + a2 * dyB + b1 * du + b2 * duAnt;
+        duAnt = du;  dyB = dyA;  dyA = dy;
+        yy += dy;  yp[j] = yy;                // soma as variacoes
+    }
+}
+```
+
+## Uma iteração do gradiente em C
+
+```{.c}
+static void IteracaoGradiente(float r)
+{
+    Preve();                                    // y^ para o plano atual
+    for (i = 0U; i < Nu; i++) {                 // derivada de J/2 em du_i
+        g = lambda * dU[i];
+        for (j = i; j < Np; j++)
+            g -= s[j - i] * (r - yp[j]);        // s: resposta ao degrau
+        grad[i] = g;
+    }
+    for (i = 0U; i < Nu; i++)
+        dU[i] -= passo * grad[i];               // desce a tigela
+}
+```
+
+## Uma amostra do MPC em C
+
+```{.c}
+float MPC(float r, float y)
+{
+    y2m = y1m;  y1m = y0m;  y0m = y;            // medidas
+    for (i = 0U; i + 1U < Nu; i++) dU[i] = dU[i + 1U];
+    dU[Nu - 1U] = 0.0f;                         // parte do plano anterior
+    for (it = 0U; it < nIter; it++) IteracaoGradiente(r);
+    u = u1 + dU[0];                             // so o 1o movimento
+    if (u < uMin) u = uMin;                     // saturacao do atuador
+    if (u > uMax) u = uMax;
+    u2 = u1;  u1 = u;
+    return u;
+}
+```
+
+## Medição do tempo na placa
+
+O **CPU Timer 1** conta ciclos de CPU (5 ns); a `struct desempenho` aparece no Watch:
+
+| Campo | O que mede |
+|---|---|
+| `inicializacao` | resposta ao degrau e passo do gradiente — uma vez |
+| `calculoMax` | `MPC()` inteiro: previsões e gradiente |
+| `lacoMax` | a interrupção inteira (ADC, MPC, DAC, gravação) |
+| `ocupacaoMax` | `lacoMax` em % de 1 ms |
+| `estouros` | amostras em que o cálculo passou de 1 ms |
+
+Por amostra, `tV[k]` grava o tempo de cálculo em µs.
+
+## Cuidado: `Device_cal` e `-O2`
+
+- O projeto é compilado com otimização (`-O2`) para medir tempos realistas;
+- O `Device_init` chama uma rotina de calibração da TI que altera um registrador da CPU (XAR1)
+  sem restaurá-lo;
+- Com `-O2`, o compilador guardava ali o endereço da rotina de amostragem: o programa travava na
+  primeira amostra (`Interrupt_illegalOperationHandler`);
+- Correção, em `placa.c`: `Ts` e o endereço da rotina ficam em variáveis `volatile` durante o
+  `Device_init`.
+
+# Ensaio
+
+## O que gravar e observar
+
+- Gravar o SK07, Resume, esperar ~2 s (1 s de acomodação + 0,8 s de ensaio);
+- No gráfico do CCS, **Capacity** = 800; exportar `rV`, `uV`, `yV` e `tV` para
+  `dados/DadosMPCConvencional01.csv`;
+- Anotar da `desempenho`: `calculoMax`, `lacoMax`, `ocupacaoMax` e `estouros`;
+- Comparar com a previsão: acomodação ≈ 53 ms, sem sobressinal; cálculo ≈ 0,5 ms (estimado);
+- Variar `nIter` (10, 20, 50, 100) e ver o efeito na resposta e no tempo — até onde cabe em 1 ms?
+
+## Referências
+
+- Camacho, E. F.; Bordons, C. *Model Predictive Control*. 2ª ed. Springer, 2007.
+- Maciejowski, J. M. *Predictive Control with Constraints*. Prentice Hall, 2002.
+- Rossiter, J. A. *Model-Based Predictive Control: A Practical Approach*. CRC Press, 2003.
+- Boyd, S.; Vandenberghe, L. *Convex Optimization*. Cambridge University Press, 2004 (método do gradiente).
+
+Firmware: `ProjetosSK/SK07MPCNumerico/`; réplica em Python: `analise/convencional.py`.

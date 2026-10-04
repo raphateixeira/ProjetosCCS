@@ -1,0 +1,26 @@
+---
+title: "Projetos CCS"
+subtitle: "Projetos com a LaunchPad C2000 LAUNCHXL-F28379D no Code Composer Studio"
+author: "Prof. Dr. Raphael Barros Teixeira"
+---
+
+[⬅ Site principal](https://raphateixeira.github.io)
+
+Repositório dos projetos desenvolvidos no **Code Composer Studio (CCS)** com a placa
+**LAUNCHXL-F28379D** (LaunchPad C2000 Delfino, TMS320F28379D), com notas que documentam a
+placa, os periféricos e cada projeto.
+
+## Ferramentas
+
+- **Hardware**: LAUNCHXL-F28379D e BoosterPacks;
+- **Software**: Code Composer Studio, C2000Ware (driverlib e exemplos), compilador TI C2000;
+- **Linguagem**: C, com análise dos dados em Python/MATLAB.
+
+## Notas
+
+* [Nota 01 — Placa LAUNCHXL-F28379D](Notas/Nota01LaunchPadF28379D.html) — microcontrolador TMS320F28379D, recursos da placa, primeiro projeto no CCS, DAC/ADC, amostragem disparada por hardware e exportação de dados.
+* [Nota 02 — Identificação do Filtro Sallen-Key](Notas/IdentificacaoSallenKeyPRBS/index.html) — ensaios ao degrau e PRBS com a LaunchPad e identificação de um modelo ARX.
+* [Nota 03 — Planejamento dos Ensaios de Controle](Notas/ControleSallenKey/index.html) — dez ensaios sobre o filtro Sallen-Key, do P ao MPC antecipatório: projetos, simulações com saturação e ruído, métricas previstas e especificação do firmware SK03Controle.
+* [Nota 04 — Controle Proporcional](Notas/ControleProporcional/index.html) — ensaios do controle P na placa (`SK03ControleP`): erro em regime de uma planta tipo 0, medido × previsto e comparação entre ganhos.
+* [Nota 05 — Controle PI](Notas/ControlePI/index.html) — PI por cancelamento polo-zero (`SK04ControlePI`): erro nulo, comparação com o P e *windup* sem e com anti-windup.
+* [Nota 06 — Controle Preditivo](Notas/ControlePreditivo/index.html) — MPC convencional com o modelo ARX identificado, em $T_s$ = 1 ms (`SK07MPCNumerico`): previsão nas variações, função custo com $\lambda$, horizonte $N_p$ e movimentos $N_u$, minimização pelo gradiente a cada amostra e o custo computacional na placa.

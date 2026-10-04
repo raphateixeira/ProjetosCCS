@@ -1,0 +1,60 @@
+# ---------------------------------------------------------------------
+#  Configuração do projeto Quarto — ProjetosCCS.
+#  Notas e documentação dos projetos do Code Composer Studio (C2000):
+#  projetos com a placa LAUNCHXL-F28379D.
+#  ProjetosSK/ guarda só os projetos do CCS (workspace do CCS); o conteúdo (páginas, slides,
+#  dados, análises) fica em Notas/.
+# ---------------------------------------------------------------------
+
+project:
+  type: website
+  output-dir: _site
+  render:
+    - index.qmd
+    - Notas/*.qmd
+    - Notas/*/*.qmd
+
+execute:
+  freeze: auto
+
+website:
+  title: "Projetos CCS"
+  description: "Projetos do Code Composer Studio com a LaunchPad C2000 LAUNCHXL-F28379D — Prof. Dr. Raphael Teixeira (UFPA-CAMTUC-FEE)"
+  site-url: https://raphateixeira.github.io/ProjetosCCS/
+  repo-url: https://github.com/raphateixeira/ProjetosCCS
+  reader-mode: true
+  navbar:
+    background: "#1F3A5F"
+    foreground: "#FFFFFF"
+    title: "Projetos CCS"
+    left:
+      - text: "Início"
+        href: https://raphateixeira.github.io/index.html
+      - text: "Projetos CCS"
+        href: index.qmd
+      - text: "Notas"
+        menu:
+          - text: "Nota 01 — Placa LAUNCHXL-F28379D"
+            href: Notas/Nota01LaunchPadF28379D.qmd
+          - text: "Nota 02 — Identificação do Filtro Sallen-Key"
+            href: Notas/IdentificacaoSallenKeyPRBS/index.qmd
+          - text: "Nota 03 — Planejamento dos Ensaios de Controle"
+            href: Notas/ControleSallenKey/index.qmd
+          - text: "Nota 04 — Controle Proporcional"
+            href: Notas/ControleProporcional/index.qmd
+          - text: "Nota 05 — Controle PI"
+            href: Notas/ControlePI/index.qmd
+          - text: "Nota 06 — Controle Preditivo"
+            href: Notas/ControlePreditivo/index.qmd
+  page-footer:
+    border: false
+    center: "©2026 Prof. Dr. Raphael Teixeira — UFPA-CAMTUC-FEE"
+
+format:
+  html:
+    theme: [cosmo, TemaRTx.scss]
+    lang: pt-BR
+    toc: true
+    toc-depth: 3
+    code-copy: true
+    fig-align: center
