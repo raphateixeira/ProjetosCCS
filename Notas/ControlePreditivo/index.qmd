@@ -1,5 +1,5 @@
 ---
-title: "Nota 06 — Controle Preditivo"
+title: "Controle Preditivo"
 subtitle: "Filtro Sallen-Key com a LaunchPad LAUNCHXL-F28379D: MPC convencional com o modelo ARX, em Ts = 1 ms"
 institute: "Universidade Federal do Pará"
 author: "Prof. Dr. Raphael Teixeira"
@@ -78,7 +78,7 @@ def figura(sims, janela=(0, 0.8), altura=5.6):
 4. **A minimização** pelo método do gradiente — e se cabe em 1 ms;
 5. **O firmware** `SK07MPCNumerico` e o ensaio na placa.
 
-Modelo: [Nota 02](../IdentificacaoSallenKeyPRBS/index.qmd) · Placa: [Nota 01](../Nota01LaunchPadF28379D.qmd).
+Modelo: [Identificação do Sallen-Key](../IdentificacaoSallenKeyPRBS/index.qmd) · Placa: [Placa LAUNCHXL-F28379D](../Nota01LaunchPadF28379D.qmd).
 
 # A ideia
 
@@ -138,7 +138,7 @@ O plano não precisa ser perfeito — só o 1º movimento é aplicado, e o plano
 
 ## O modelo ARX identificado
 
-Nota 02, $T_s$ = 1 ms, identificado com a PRBS:
+Modelo da [identificação do Sallen-Key](../IdentificacaoSallenKeyPRBS/index.qmd), $T_s$ = 1 ms, identificado com a PRBS:
 
 $$
 y(k) = a_1\,y(k-1) + a_2\,y(k-2) + b_1\,u(k-1) + b_2\,u(k-2) + c
@@ -246,7 +246,7 @@ fig = figura({f"λ = {br(l, 0)}": cv.simula(otimo(lam=l), r, ruido=False) for l 
              janela=(0.05, 0.45))
 ```
 
-**Escolha: $\lambda$ = 3** — acomodação ≈ 50 ms sem sobressinal (a especificação das Notas 03 a 05).
+**Escolha: $\lambda$ = 3** — acomodação ≈ 50 ms sem sobressinal (a especificação do planejamento e dos ensaios P e PI).
 
 # A minimização
 
@@ -356,7 +356,7 @@ Markdown("Com o ruído do ADC (1,9 mV), $y$ continua limpo, mas $u$ fica ruidoso
 
 ```{.c}
 const ParametrosMPC p = {
-    .modelo = {           // ARX, Ts = 1 ms (Nota 02)
+    .modelo = {           // ARX, Ts = 1 ms (identificacao do Sallen-Key)
         .a1 = 1.60918827f, .a2 = -0.62250084f,
         .b1 = 0.01096776f, .b2 = 0.00237673f,
     },

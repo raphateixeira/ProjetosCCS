@@ -9,6 +9,9 @@
 project:
   type: website
   output-dir: _site
+  pre-render: scripts/empacota_projetos.py   # downloads/<Projeto>.zip de cada projeto do CCS
+  resources:
+    - downloads/*.zip
   render:
     - index.qmd
     - Notas/*.qmd
@@ -32,20 +35,40 @@ website:
         href: https://raphateixeira.github.io/index.html
       - text: "Projetos CCS"
         href: index.qmd
-      - text: "Notas"
+    right:
+      - text: "LaunchPad F28379D"
+        href: Notas/Nota01LaunchPadF28379D.qmd
+      - text: "Sallen-Key"
         menu:
-          - text: "Nota 01 — Placa LAUNCHXL-F28379D"
-            href: Notas/Nota01LaunchPadF28379D.qmd
-          - text: "Nota 02 — Identificação do Filtro Sallen-Key"
-            href: Notas/IdentificacaoSallenKeyPRBS/index.qmd
-          - text: "Nota 03 — Planejamento dos Ensaios de Controle"
+          - text: "Nota do sistema"
+          - text: "Planejamento dos Ensaios de Controle"
             href: Notas/ControleSallenKey/index.qmd
-          - text: "Nota 04 — Controle Proporcional"
+          - text: "---"
+          - text: "Apresentações"
+          - text: "Identificação do Filtro Sallen-Key"
+            href: Notas/IdentificacaoSallenKeyPRBS/index.qmd
+          - text: "Controle Proporcional"
             href: Notas/ControleProporcional/index.qmd
-          - text: "Nota 05 — Controle PI"
+          - text: "Controle PI"
             href: Notas/ControlePI/index.qmd
-          - text: "Nota 06 — Controle Preditivo"
+          - text: "Controle Preditivo"
             href: Notas/ControlePreditivo/index.qmd
+          - text: "---"
+          - text: "Projetos do CCS"
+            href: index.qmd#filtro-sallen-key
+      - text: "Conversor Buck"
+        menu:
+          - text: "Apresentações"
+          - text: "Identificação do Conversor Buck"
+            href: Notas/IdentificacaoBuckPRBS/index.qmd
+          - text: "---"
+          - text: "Projetos do CCS"
+            href: index.qmd#conversor-buck
+      - text: "Motor-Gerador"
+        href: index.qmd#motor-gerador
+      - icon: github
+        href: https://github.com/raphateixeira/ProjetosCCS
+        aria-label: Repositório no GitHub
   page-footer:
     border: false
     center: "©2026 Prof. Dr. Raphael Teixeira — UFPA-CAMTUC-FEE"

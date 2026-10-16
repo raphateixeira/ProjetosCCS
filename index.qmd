@@ -7,20 +7,81 @@ author: "Prof. Dr. Raphael Barros Teixeira"
 [⬅ Site principal](https://raphateixeira.github.io)
 
 Repositório dos projetos desenvolvidos no **Code Composer Studio (CCS)** com a placa
-**LAUNCHXL-F28379D** (LaunchPad C2000 Delfino, TMS320F28379D), com notas que documentam a
-placa, os periféricos e cada projeto.
+**LAUNCHXL-F28379D** (LaunchPad C2000 Delfino, TMS320F28379D), organizados por sistema. Cada
+sistema tem uma **nota do sistema** (o sistema, o modelo e os experimentos), **apresentações**
+com os ensaios (identificação e controle) e os **projetos do CCS** para baixar.
 
-## Ferramentas
+Cada projeto vem num `.zip` com os fontes e as configurações (descompactar, abrir a pasta no
+CCS com *File → Open Folder* e fazer *Clean* + *Rebuild*) e pode ser lido no
+[repositório do GitHub](https://github.com/raphateixeira/ProjetosCCS). A build usa a C2000Ware instalada
+(driverlib, símbolo `_LAUNCHXL_F28379D`).
+
+## LaunchPad F28379D
 
 - **Hardware**: LAUNCHXL-F28379D e BoosterPacks;
 - **Software**: Code Composer Studio, C2000Ware (driverlib e exemplos), compilador TI C2000;
 - **Linguagem**: C, com análise dos dados em Python/MATLAB.
 
-## Notas
+**Nota**
 
-* [Nota 01 — Placa LAUNCHXL-F28379D](Notas/Nota01LaunchPadF28379D.html) — microcontrolador TMS320F28379D, recursos da placa, primeiro projeto no CCS, DAC/ADC, amostragem disparada por hardware e exportação de dados.
-* [Nota 02 — Identificação do Filtro Sallen-Key](Notas/IdentificacaoSallenKeyPRBS/index.html) — ensaios ao degrau e PRBS com a LaunchPad e identificação de um modelo ARX.
-* [Nota 03 — Planejamento dos Ensaios de Controle](Notas/ControleSallenKey/index.html) — dez ensaios sobre o filtro Sallen-Key, do P ao MPC antecipatório: projetos, simulações com saturação e ruído, métricas previstas e especificação do firmware SK03Controle.
-* [Nota 04 — Controle Proporcional](Notas/ControleProporcional/index.html) — ensaios do controle P na placa (`SK03ControleP`): erro em regime de uma planta tipo 0, medido × previsto e comparação entre ganhos.
-* [Nota 05 — Controle PI](Notas/ControlePI/index.html) — PI por cancelamento polo-zero (`SK04ControlePI`): erro nulo, comparação com o P e *windup* sem e com anti-windup.
-* [Nota 06 — Controle Preditivo](Notas/ControlePreditivo/index.html) — MPC convencional com o modelo ARX identificado, em $T_s$ = 1 ms (`SK07MPCNumerico`): previsão nas variações, função custo com $\lambda$, horizonte $N_p$ e movimentos $N_u$, minimização pelo gradiente a cada amostra e o custo computacional na placa.
+* [Placa LAUNCHXL-F28379D](Notas/Nota01LaunchPadF28379D.html) — microcontrolador TMS320F28379D, recursos da placa, conectores, primeiro projeto no CCS, DAC/ADC, amostragem disparada por hardware e exportação de dados. Base comum a todos os sistemas.
+
+## Filtro Sallen-Key
+
+Filtro passa-baixas de 2ª ordem com amplificador operacional: entrada pelo DAC, saída lida no
+ADC.
+
+**Nota do sistema**
+
+* [Planejamento dos Ensaios de Controle](Notas/ControleSallenKey/index.html) — dez ensaios sobre o filtro, do P ao MPC antecipatório: projetos, simulações com saturação e ruído, métricas previstas e especificação do firmware.
+
+**Apresentações**
+
+* [Identificação do Filtro Sallen-Key](Notas/IdentificacaoSallenKeyPRBS/index.html) — ensaios ao degrau e PRBS com a LaunchPad e identificação de um modelo ARX.
+* [Controle Proporcional](Notas/ControleProporcional/index.html) — controle P na placa: erro em regime de uma planta tipo 0, medido × previsto e comparação entre ganhos.
+* [Controle PI](Notas/ControlePI/index.html) — PI por cancelamento polo-zero: erro nulo, comparação com o P e *windup* sem e com anti-windup.
+* [Controle Preditivo](Notas/ControlePreditivo/index.html) — MPC convencional com o modelo ARX identificado: previsão, função custo, horizontes, minimização pelo gradiente e custo computacional na placa.
+
+**Projetos do CCS** (`ProjetosSK/`)
+
+| Projeto | Ensaio | Código |
+|---|---|---|
+| `SK01Degrau` | onda quadrada 0,6 ↔ 1,4 V, $T_s$ = 1 ms | [.zip](downloads/SK01Degrau.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosSK/SK01Degrau) |
+| `SK02PRBS` | PRBS 1,0 ± 0,4 V, $T_b$ = 5 ms, $T_s$ = 1 ms | [.zip](downloads/SK02PRBS.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosSK/SK02PRBS) |
+| `SK03ControleP` | controle proporcional | [.zip](downloads/SK03ControleP.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosSK/SK03ControleP) |
+| `SK04ControlePI` | controle PI, com e sem anti-windup | [.zip](downloads/SK04ControlePI.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosSK/SK04ControlePI) |
+| `SK05Senoide` | senoide de 5 Hz, 1,0 ± 0,3 V | [.zip](downloads/SK05Senoide.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosSK/SK05Senoide) |
+| `SK06VarreduraSenoidal` | resposta em frequência de 0,5 a 50 Hz (*lock-in* na placa) | [.zip](downloads/SK06VarreduraSenoidal.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosSK/SK06VarreduraSenoidal) |
+| `SK07MPCNumerico` | MPC com minimização pelo gradiente | [.zip](downloads/SK07MPCNumerico.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosSK/SK07MPCNumerico) |
+| `SK08MPCAnalitico` | MPC com solução analítica | [.zip](downloads/SK08MPCAnalitico.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosSK/SK08MPCAnalitico) |
+| `SK09MPCRestricoes` | MPC com restrições | [.zip](downloads/SK09MPCRestricoes.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosSK/SK09MPCRestricoes) |
+
+## Conversor Buck
+
+Conversor CC-CC abaixador (30 V → 10 V) com chave única e diodo: a placa comanda a razão
+cíclica pelo PWM e mede a tensão de saída no ADC.
+
+**Nota do sistema**
+
+* Em preparação: conversor, modelo médio, sensoriamento, PWM na LaunchPad e plano dos ensaios.
+
+**Apresentações**
+
+* [Identificação do Conversor Buck](Notas/IdentificacaoBuckPRBS/index.html) — escolha de $T_s$ e da duração do bit da PRBS, identificação ARX(2,2,2) e validação, simuladas em MATLAB.
+
+**Projetos do CCS** (`ProjetosBuck/`)
+
+| Projeto | Ensaio | Código |
+|---|---|---|
+| `BK01Degrau` | malha aberta: rampa até 10 V e onda quadrada 10 ↔ 12 V, PWM de 20 kHz, $T_s$ = 50 µs | [.zip](downloads/BK01Degrau.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosBuck/BK01Degrau) |
+| `PWM_prbs` | malha aberta: PRBS de 9 bits na razão cíclica, $T_b$ = 200 µs, $T_s$ = 50 µs | [.zip](downloads/PWM_prbs.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosBuck/PWM_prbs) |
+
+## Motor-Gerador
+
+**Nota do sistema**
+
+* Em preparação.
+
+**Apresentações**
+
+* Em preparação.

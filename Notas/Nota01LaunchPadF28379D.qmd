@@ -1,5 +1,5 @@
 ---
-title: "Nota 01 — Placa LAUNCHXL-F28379D"
+title: "Placa LAUNCHXL-F28379D"
 subtitle: "LaunchPad C2000 Delfino: CCS, DAC/ADC, aquisição de dados"
 description: "TMS320F28379D e LaunchPad LAUNCHXL-F28379D com configuração de projeto no Code Composer Studio."
 author: "Raphael Teixeira"
@@ -7,7 +7,6 @@ date: "2026-10-01"
 date-modified: last-modified
 categories: [C2000, CCS, LaunchPad, F28379D]
 placa: "LAUNCHXL-F28379D"
-ordem: 1
 status: rascunho
 lang: pt-BR
 ---
@@ -68,9 +67,9 @@ A LAUNCHXL-F28379D é dividida em duas regiões, separadas por uma barreira de i
 
 ::: {.callout-warning}
 ## Conferir na placa
-Designadores de *jumpers* (alimentação/isolação), posição padrão da chave de *boot* e mapa
-completo dos pinos dos BoosterPacks devem ser conferidos no *User's Guide* (SPRUI77) e
-registrados aqui antes de acoplar BoosterPacks ou circuitos externos. As entradas analógicas **não toleram
+Designadores de *jumpers* (alimentação/isolação) e posição padrão da chave de *boot* devem
+ser conferidos no *User's Guide* (SPRUI77) antes de acoplar BoosterPacks ou circuitos
+externos; os pinos de J1–J4 estão na seção [Conectores do BoosterPack 1](#conectores-do-boosterpack-1-j1j4). As entradas analógicas **não toleram
 5 V**: todo sinal de medição deve estar condicionado para a faixa $0$–$3{,}0$ V.
 :::
 
@@ -87,6 +86,45 @@ revista para não interligar fontes.
 |---|---|
 | Depurador conectado (CCS) | o CCS carrega o programa em RAM ou Flash e controla a execução |
 | Placa isolada, *boot* da Flash | o programa gravado na Flash roda ao energizar (aplicação autônoma) |
+
+## Conectores do BoosterPack 1 (J1–J4)
+
+Numeração padrão do BoosterPack (1 a 40), a usada nas notas e nos projetos (J3.26, J4.40…).
+As colunas seguem a disposição na placa, da esquerda para a direita; cada linha é uma fileira
+de pinos. Em **negrito**, os pinos usados nos projetos deste repositório.
+
+| J1 | J3 | J4 | J2 |
+|---|---|---|---|
+| 1 — 3V3 | 21 — 5V | **40 — GPIO0 / EPWM1A** | **20 — GND** |
+| 2 — GPIO32 | **22 — GND** | **39 — GPIO1 / EPWM1B** | 19 — GPIO61 / SPIA STE |
+| 3 — GPIO19 / SCIB RX | 23 — ADCIN14 | **38 — GPIO2 / EPWM2A** | 18 — GPIO123 / SD1 CLK1 |
+| 4 — GPIO18 / SCIB TX | 24 — ADCINC3 | **37 — GPIO3 / EPWM2B** | 17 — GPIO122 / SD1 D1 |
+| 5 — GPIO67 | 25 — ADCINB3 | **36 — GPIO4 / EPWM3A** | 16 — RESET |
+| 6 — GPIO111 | **26 — ADCINA3** | **35 — GPIO5 / EPWM3B** | 15 — GPIO58 / SPIA SIMO |
+| 7 — GPIO60 / SPIA CLK | 27 — ADCINC2 | 34 — GPIO24 / OUTPUTXBAR1 | 14 — GPIO59 / SPIA SOMI |
+| 8 — GPIO22 | 28 — ADCINB2 | 33 — GPIO16 / OUTPUTXBAR7 | **13 — GPIO124 / SD1 D2** |
+| 9 — GPIO105 / I2CA SCL | 29 — ADCINA2 | 32 — DAC1 (PWM filtrado) | 12 — GPIO125 / SD1 CLK2 |
+| 10 — GPIO104 / I2CA SDA | **30 — ADCINA0 / DACOUTA** | 31 — DAC2 (PWM filtrado) | 11 — GPIO29 / OUTPUTXBAR6 |
+
+- **J3**: só entradas analógicas (0–3,0 V); o pino 30 é também a saída do DAC-A (DACOUTA);
+- **J4.31 e J4.32** não são o DAC interno: são PWM filtrado por RC (1 kΩ, 100 nF) dos
+  EPWM8B (GPIO160) e EPWM8A (GPIO159);
+- O segundo *site* (J5–J8, pinos 41 a 80) repete o arranjo com ADCs, EPWM4–6 e SPIB, e ainda
+  não é usado aqui.
+
+Pinos usados nos projetos:
+
+| Pino | Sinal | Uso |
+|---|---|---|
+| J3.26 | ADCINA3 | $y$ do filtro Sallen-Key (`SK01`–`SK09`); $V_o$ do buck (`BK01Degrau`) |
+| J3.30 | DACOUTA / ADCINA0 | $u$ do filtro Sallen-Key (DAC-A); $V_o$ do buck no `PWM_prbs` (ADCINA0) |
+| J4.40 | GPIO0 / EPWM1A | chave do buck (`BK01Degrau`, `PWM_prbs`); braço A, chave de cima (`VSI01`) |
+| J4.39–J4.35 | EPWM1B, EPWM2A/B, EPWM3A/B | braços A, B e C do inversor (`VSI01`, BOOSTXL-3PHGANINV) |
+| J2.13 | GPIO124 | habilitação do driver do BOOSTXL-3PHGANINV (`VSI01`) |
+| J3.22, J2.20 | GND | terra comum com o circuito externo |
+
+Fontes: esquemático da LaunchPad (R2.0, em `c2000ware/boards/LaunchPads/LAUNCHXL-F28379D/`)
+e o arquivo de placa do SysConfig (`boards/.meta/LAUNCHXL_F28379D.syscfg.json`) da C2000Ware.
 
 ## Primeiro projeto no CCS
 
@@ -246,7 +284,7 @@ valores. O formato CSV acima é lido pela função `le_csv_ccs()` dos scripts de
 
 ## Conexões
 
-- [Nota 02 — Identificação do Filtro Sallen-Key](IdentificacaoSallenKeyPRBS/index.qmd) —
+- [Identificação do Filtro Sallen-Key](IdentificacaoSallenKeyPRBS/index.qmd) —
   ensaios ao degrau e PRBS e identificação ARX usando os recursos desta nota;
 - [Controle do Inversor Trifásico](https://raphateixeira.github.io/ControleInversor3f/) —
   exemplo de aplicação desta placa.

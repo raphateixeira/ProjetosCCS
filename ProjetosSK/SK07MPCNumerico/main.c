@@ -27,7 +27,7 @@ void main(void)
 
     // ---- Parametros do MPC:
     const ParametrosMPC p = {
-        .modelo = {           // ARX(2,2,1), Ts = 1 ms (Nota 02, DadosPRBS1ms.csv)
+        .modelo = {           // ARX(2,2,1), Ts = 1 ms (identificacao do Sallen-Key, DadosPRBS1ms.csv)
             .a1 = 1.60918827f, .a2 = -0.62250084f,
             .b1 = 0.01096776f, .b2 = 0.00237673f,
         },

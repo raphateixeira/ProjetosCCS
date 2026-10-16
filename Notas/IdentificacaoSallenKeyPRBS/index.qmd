@@ -1,5 +1,5 @@
 ---
-title: "Nota 02 — Identificação do Filtro Sallen-Key"
+title: "Identificação do Filtro Sallen-Key"
 subtitle: "LaunchPad LAUNCHXL-F28379D: resposta ao degrau, ensaio PRBS (Ts = 1 ms) e modelo ARX de 2ª ordem"
 institute: "Universidade Federal do Pará"
 author: "Prof. Dr. Raphael Teixeira"
@@ -63,7 +63,7 @@ tau_nom = -1 / polos
 5. **Identificação**: modelo ARX por mínimos quadrados e validação.
 
 Recursos gerais da placa (DAC, ADC, amostragem por hardware, exportação de dados):
-[Nota 01 — Placa LAUNCHXL-F28379D](../Nota01LaunchPadF28379D.qmd).
+[Placa LAUNCHXL-F28379D](../Nota01LaunchPadF28379D.qmd).
 
 # Montagem
 
@@ -134,7 +134,7 @@ $$
 ## Organização
 
 Pasta `ProjetosSK/` — um projeto CCS por ensaio, ambos com a
-estrutura de amostragem por hardware da [Nota 01](../Nota01LaunchPadF28379D.qmd):
+estrutura de amostragem por hardware da [nota da placa](../Nota01LaunchPadF28379D.qmd):
 
 | Projeto | Ensaio | Situação |
 |---|---|---|
@@ -347,7 +347,7 @@ Markdown(f"""
 - **Dinâmica dominante**: $\\tau_1$ medido é {br(100 * (1 - t1_aj / tau_nom[0]), 0)} % menor que o
   nominal. Com resistores nominais e $C_1 = C_2 = C$, o ajuste pede **$C_{{eq}} \\approx$
   {br(C_eq * 1e6)} µF** ({br(100 * (C_eq / 3.3e-6 - 1), 0)} %) — mas os capacitores medidos estão
-  em ≈ 3,3 µF: a diferença **não** vem da tolerância dos componentes (ver Nota 03);
+  em ≈ 3,3 µF: a diferença **não** vem da tolerância dos componentes (ver o planejamento dos ensaios de controle);
 - **Polo rápido**: $\\tau_2 \\approx$ {ms(t2_aj)} ms $< T_s$ = 5 ms — **mal determinado** aqui; por
   isso o ensaio PRBS usa $T_s$ = 1 ms;
 - **Ganho**: $K$ = {br(K, 3)}; ≈ {br(1e3 * (uA - yf), 0)} mV abaixo de 1,4 V no regime
@@ -778,7 +778,7 @@ zS = np.exp(1j * 2 * np.pi / NS)
 cs_uop = 1.0
 def sim_periodico_tf(tf):
     return ia.simula_tf(tf, np.tile(uS - cs_uop, 3))[-len(uS):] + dA.y_op
-tf_fis = ia.discretiza([9288.0], [1.0, 337.9, 9288.0], T5)       # físico, componentes medidos (Nota 03)
+tf_fis = ia.discretiza([9288.0], [1.0, 337.9, 9288.0], T5)       # físico, componentes medidos (planejamento)
 yS_arx = sim_periodico_tf(tf_esc5)
 fit_sen = lambda ym: ia.fit(yS, ym)
 

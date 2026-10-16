@@ -4,7 +4,7 @@
 // ============================================================================
 //  MPC convencional: custo minimizado pelo metodo do gradiente a cada amostra
 //
-//  Modelo: ARX identificado (Nota 02), escrito nas VARIACOES de y e u
+//  Modelo: ARX identificado (identificacao do Sallen-Key), escrito nas VARIACOES de y e u
 //      dy(k) = a1 dy(k-1) + a2 dy(k-2) + b1 du(k-1) + b2 du(k-2)
 //      dy(k) = y(k) - y(k-1),  du(k) = u(k) - u(k-1)
 //  (nas variacoes nao entra o ponto de operacao, e um erro de ganho do modelo

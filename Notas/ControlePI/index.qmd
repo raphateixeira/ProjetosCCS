@@ -1,5 +1,5 @@
 ---
-title: "Nota 05 — Controle PI"
+title: "Controle PI"
 subtitle: "Filtro Sallen-Key com a LaunchPad LAUNCHXL-F28379D: cancelamento polo-zero, erro nulo e windup"
 institute: "Universidade Federal do Pará"
 author: "Prof. Dr. Raphael Teixeira"
@@ -72,8 +72,8 @@ I1, V1 = pi.reconstroi(EA1, anti_windup=True)
    com o P;
 4. **Ensaio com saturação** (0,6 ↔ 1,8 V, nível alto inatingível): *windup* sem e com anti-windup.
 
-Modelo: [Nota 02](../IdentificacaoSallenKeyPRBS/index.qmd) · Planejamento: [Nota 03](../ControleSallenKey/index.qmd)
-(ensaios 2 e 3) · Controle P: [Nota 04](../ControleProporcional/index.qmd).
+Modelo: [Identificação do Sallen-Key](../IdentificacaoSallenKeyPRBS/index.qmd) · [Planejamento](../ControleSallenKey/index.qmd)
+(ensaios 2 e 3) · [Controle Proporcional](../ControleProporcional/index.qmd).
 
 # Projeto por cancelamento polo-zero
 
@@ -81,7 +81,7 @@ Modelo: [Nota 02](../IdentificacaoSallenKeyPRBS/index.qmd) · Planejamento: [Not
 
 :::: {.columns}
 ::: {.column width="50%"}
-Planta (ARX(1,3,1), Nota 02):
+Planta (ARX(1,3,1) da identificação):
 
 $$
 G(z) = \frac{b_1 z^2 + b_2 z + b_3}{z^2\,(z - a_1)}, \qquad a_1 = 0{,}8156
@@ -132,7 +132,7 @@ for kc in [1.0, 1.25, 1.5, 1.75, 2.0, 2.5]:
 Markdown("| $K_c$ | $K_p$ | $K_i$ (s⁻¹) | polo dominante de malha fechada | $t_s$ (ms) | sobressinal (%) |\n"
          "|---|---|---|---|---|---|\n" + "\n".join(linhas)
          + "\n\nSimulação com o ARX(1,3,1), referência quadrada 0,8 ↔ 1,2 V. **Escolha: $K_c$ = 1,5** "
-           "($K_p$ = 1,223; $K_i$ = 55,3 s⁻¹) — o mesmo PI da Nota 03.")
+           "($K_p$ = 1,223; $K_i$ = 55,3 s⁻¹) — o mesmo PI do planejamento.")
 ```
 
 A partir de $K_c \approx 2$ os polos de malha fechada ficam complexos e aparece sobressinal: o
@@ -239,7 +239,7 @@ Markdown(f"Referência 0,8 ↔ 1,2 V (60 amostras por nível, gravação única)
 P = {kp: cp.le_ensaio(f"../ControleProporcional/dados/DadosControleP0{kp}.csv") for kp in (1, 2)}
 fig, ax = plt.subplots(figsize=(15, 5.5))
 ax.step(E1["t"], E1["r"], where="post", color="k", ls="--", lw=2.6, label="r")
-ax.plot(P[1]["t"], P[1]["y"], color=CINZA, lw=2.6, label="P, Kp = 1 (Nota 04)")
+ax.plot(P[1]["t"], P[1]["y"], color=CINZA, lw=2.6, label="P, Kp = 1 (controle P)")
 ax.plot(E1["t"], E1["y"], color=VERMELHO, lw=2.6, label="PI, Kc = 1,5")
 ax.set_xlim(0, 0.75); ax.set_xlabel("t (s)"); ax.set_ylabel("y (V)"); ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), frameon=False, ncol=3)
 fig.tight_layout()
@@ -424,7 +424,7 @@ Markdown(f"""
 - **Windup**: com referência inatingível, o integrador sem proteção chega a {br(np.nanmax(I0), 1)} V e prende o
   atuador na saturação depois da descida; a **integração condicional** resolve com um `if` — mas,
   como implementada, deixa $u$ ≈ 28 mV abaixo do limite (corrigir no firmware);
-- **Próximos ensaios**: PI com retrocálculo (*back-calculation*) e a forma RST (Nota 03, ensaios 3 e
+- **Próximos ensaios**: PI com retrocálculo (*back-calculation*) e a forma RST (planejamento, ensaios 3 e
   6); perturbação na entrada para observar o polo cancelado.
 """)
 ```
@@ -434,5 +434,5 @@ Markdown(f"""
 `dados/DadosControlePI01.csv` (sem saturação), `dados/DadosPIsaturacaoAW0.csv` e
 `dados/DadosPIsaturacaoAW1.csv` (0,6 ↔ 1,8 V, sem e com anti-windup). Firmware em
 `ProjetosSK/SK04ControlePI/`. Para exportar no modo contínuo, pausar o
-programa antes (Nota 04).
+programa antes (controle P).
 :::

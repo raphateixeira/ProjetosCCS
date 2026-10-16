@@ -1,5 +1,5 @@
 ---
-title: "Nota 03 — Planejamento dos Ensaios de Controle"
+title: "Planejamento dos Ensaios de Controle"
 subtitle: "Filtro Sallen-Key com a LaunchPad LAUNCHXL-F28379D: do P ao MPC antecipatório"
 description: "Sequência didática de dez ensaios de controle sobre o filtro Sallen-Key: projetos calculados a partir do modelo ARX, simulações com saturação e ruído, métricas previstas e especificação do firmware SK03Controle."
 author: "Raphael Teixeira"
@@ -7,7 +7,6 @@ date: "2026-10-01"
 date-modified: last-modified
 categories: [C2000, CCS, Controle, PID, RST, GPC, MPC]
 placa: "LAUNCHXL-F28379D"
-ordem: 3
 status: rascunho
 lang: pt-BR
 format:
@@ -24,8 +23,8 @@ execute:
 jupyter: python3
 ---
 
-[⬅ Índice](../../index.qmd) · Modelo: [Nota 02](../IdentificacaoSallenKeyPRBS/index.qmd) ·
-Placa: [Nota 01](../Nota01LaunchPadF28379D.qmd)
+[⬅ Índice](../../index.qmd) · Modelo: [Identificação do Sallen-Key](../IdentificacaoSallenKeyPRBS/index.qmd) ·
+Placa: [Placa LAUNCHXL-F28379D](../Nota01LaunchPadF28379D.qmd)
 
 ```{python}
 #| label: setup
@@ -109,7 +108,7 @@ def roda(ctrl_fabrica, r, semente=1):
 # Objetivo e organização
 
 Esta nota planeja uma sequência de **dez ensaios de controle** sobre o filtro Sallen-Key
-identificado na [Nota 02](../IdentificacaoSallenKeyPRBS/index.qmd), todos com a mesma placa,
+identificado na [nota de identificação](../IdentificacaoSallenKeyPRBS/index.qmd), todos com a mesma placa,
 o mesmo período de amostragem e a mesma especificação, para que a comparação seja justa.
 Para cada ensaio há: objetivo didático, projeto calculado a partir do modelo ARX, simulação
 com saturação do atuador e ruído do ADC, métricas previstas, parâmetros para o firmware e o
@@ -156,7 +155,7 @@ $$
 com polos reais em $s \approx -30{,}2$ e $-307{,}7$ rad/s ($\tau_1 \approx 33{,}1$ ms e
 $\tau_2 \approx 3{,}25$ ms).
 
-## Modelo ARX identificado (Nota 02)
+## Modelo ARX identificado
 
 Em variáveis de desvio em torno de $u_{op} = 1{,}0$ V e $y_{op} = 0{,}998$ V:
 
@@ -187,7 +186,7 @@ quase todo dentro de uma amostra. Mas ela **não explica a diferença de τ**:
 | Modelo | $\tau_1$ (ms) | $\tau_2$ (ms) | FIT no degrau |
 |---|---|---|---|
 | Físico, componentes medidos | 33,1 | 3,25 | ≈ 80 % |
-| 2ª ordem ajustado ao degrau (Nota 02) | 26,1 | 1,5 | (ajuste) |
+| 2ª ordem ajustado ao degrau (identificação) | 26,1 | 1,5 | (ajuste) |
 | ARX(2,2,1) — modela os **dois** polos | 24,5 | 2,25 | 91,5 % |
 | ARX(1,3,1) — um polo | 24,5 | — | 90,7 % |
 
@@ -210,7 +209,7 @@ Todas as simulações usam o ARX(1,3,1) em variáveis absolutas, com:
 
 - atraso de uma amostra (estrutura do próprio ARX: $u(k)$ entra em $y(k+1)$);
 - saturação $u \in [0;\ 1{,}7]$ V aplicada ao comando;
-- ruído de medida gaussiano com desvio de 1,9 mV (medido nos ensaios da Nota 02) e quantização
+- ruído de medida gaussiano com desvio de 1,9 mV (medido nos ensaios de identificação) e quantização
   do ADC de 12 bits ($3{,}0/4095 \approx 0{,}73$ mV).
 
 As métricas de rastreamento ($t_s$, sobressinal, erro em regime, IAE) são calculadas na
@@ -440,7 +439,7 @@ controle.
 
 **Projeto (IMC, com os dois polos).** É o projeto "de livro" que um aluno faria: cancelar os
 dois polos com um PID e impor malha fechada de 1ª ordem com constante λ. Com
-$\tau_1 = 24{,}5$ ms (ARX) e $\tau_2 = 2{,}25$ ms (polo rápido do ARX(2,2,1) da Nota 02):
+$\tau_1 = 24{,}5$ ms (ARX) e $\tau_2 = 2{,}25$ ms (polo rápido do ARX(2,2,1) da identificação):
 
 $$
 K_p = \frac{\tau_1 + \tau_2}{K\lambda},\qquad
@@ -973,13 +972,13 @@ medir no osciloscópio. Comparar com a estimativa do ensaio 9.
 
 ## Exportação
 
-Procedimento da [Nota 01](../Nota01LaunchPadF28379D.qmd), com um cuidado: **no gráfico do
+Procedimento da [nota da placa](../Nota01LaunchPadF28379D.qmd), com um cuidado: **no gráfico do
 CCS, o *Capacity* deve ser igual ao número de amostras** ($N$), senão a exportação corta os
 dados. Exportar `r_buf`, `y_buf` e `u_buf` para os arquivos `eNN_..._sk03.csv` listados em
 cada ensaio, em `Notas/ControleSallenKey/dados/`.
 
 ::: {.callout-note}
-Os ensaios da Nota 02 foram salvos como `DadosDegrau.csv` e `DadosPRBS01.csv`. Para os novos,
+Os ensaios de identificação foram salvos como `DadosDegrau.csv` e `DadosPRBS01.csv`. Para os novos,
 esta nota propõe o padrão `eNN_<controlador>_sk03.csv`.
 :::
 

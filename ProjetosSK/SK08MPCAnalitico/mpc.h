@@ -4,7 +4,7 @@
 // ============================================================================
 //  MPC sem restricoes, solucao analitica calculada antes do laco
 //
-//  Modelo (ARX da Nota 02 em forma canonica observavel, desvios u~ = u - uOp,
+//  Modelo (ARX da identificacao do Sallen-Key em forma canonica observavel, desvios u~ = u - uOp,
 //  y~ = y - yOp) e modelo aumentado com integrador (Wang, 2009):
 //      xm(k+1) = Am xm(k) + Bm u~(k),       y~(k) = Cm xm(k)
 //      x(k)    = [xm(k) - xm(k-1); y~(k)]:  x(k+1) = A x(k) + B du(k),  y~(k) = C x(k)

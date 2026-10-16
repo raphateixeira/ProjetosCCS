@@ -3,6 +3,7 @@
 **/*.quarto_ipynb
 /_site/
 /_freeze/
+**/index_files/
 
 # Tema compartilhado: baixado de raphateixeira/.github no build (ver .github/scripts/atualizar-tema.sh na raiz de GitRTx)
 /TemaRTx.scss
@@ -38,3 +39,6 @@ __pycache__/
 
 # Configurações locais do Claude Code (permissões desta máquina)
 **/.claude/settings.local.json
+
+# Pacotes .zip dos projetos do CCS: gerados a cada renderização (scripts/empacota_projetos.py)
+/downloads/

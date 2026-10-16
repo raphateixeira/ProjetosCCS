@@ -80,7 +80,7 @@ def kp_critico():
 # ---------------------------------------------------------------------------
 
 def previsto(ens, kp, u0=cs.U_OP, ruido=False):
-    """Simulação da Nota 03 (ARX + atraso + saturação) com a referência do ensaio."""
+    """Simulação do planejamento (ARX + atraso + saturação) com a referência do ensaio."""
     return cs.simula(cs.P(kp, u0), ens["r"], ruido=ruido)
 
 

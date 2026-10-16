@@ -1,6 +1,6 @@
-"""Projeto e simulação dos controladores da Nota 03 (filtro Sallen-Key + LAUNCHXL-F28379D).
+"""Projeto e simulação dos controladores do planejamento dos ensaios de controle (filtro Sallen-Key + LAUNCHXL-F28379D).
 
-Planta de simulação: ARX(1,3,1) identificado na Nota 02, em variáveis absolutas,
+Planta de simulação: ARX(1,3,1) identificado na nota de identificação do Sallen-Key, em variáveis absolutas,
 com o atraso de uma amostra do firmware, saturação do DAC e ruído/quantização do ADC.
 
 Controladores: P, PI (com e sem anti-windup), PID (ideal e com filtro/derivada na
@@ -14,7 +14,7 @@ from dataclasses import dataclass
 import numpy as np
 
 # ---------------------------------------------------------------------------
-# Planta (Nota 02) e condições do ensaio
+# Planta (identificação do Sallen-Key) e condições do ensaio
 # ---------------------------------------------------------------------------
 
 TS = 0.005                                  # s

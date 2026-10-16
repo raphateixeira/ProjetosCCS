@@ -6,7 +6,7 @@ Projetos do CCS (ProjetosSK/), todos com o mesmo modelo, observador e custo:
     SK09MPCRestricoes  — QP com restrições em u, Δu e y, resolvido por Hildreth a cada Ts
 
 Formulação em espaço de estados (Wang, 2009):
-    modelo (ARX da Nota 02 em forma canônica observável, variáveis de desvio)
+    modelo (ARX da identificação do Sallen-Key em forma canônica observável, variáveis de desvio)
         xm(k+1) = Am xm(k) + Bm ũ(k),  ỹ(k) = Cm xm(k)
     modelo aumentado, com integrador:  x(k) = [Δxm(k); ỹ(k)]
         x(k+1) = A x(k) + B Δu(k),  ỹ(k) = C x(k)
@@ -16,7 +16,7 @@ Formulação em espaço de estados (Wang, 2009):
 Os algoritmos seguem passo a passo o mpc.c de cada projeto, para que a simulação preveja o
 que a placa vai fazer.
 
-Planta: ARX(2,2,1) identificado na Nota 02 com Ts = 1 ms (DadosPRBS1ms.csv).
+Planta: ARX(2,2,1) identificado na nota de identificação do Sallen-Key com Ts = 1 ms (DadosPRBS1ms.csv).
 """
 
 import time
@@ -27,7 +27,7 @@ import numpy as np
 AQUI = Path(__file__).resolve().parent
 
 # ---------------------------------------------------------------------------
-# Modelo (Nota 02) e condições do ensaio — os mesmos números do main.c
+# Modelo (identificação do Sallen-Key) e condições do ensaio — os mesmos números do main.c
 # ---------------------------------------------------------------------------
 
 TS = 1e-3                                    # s

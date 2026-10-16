@@ -1,5 +1,5 @@
 ---
-title: "Nota NN — Título da nota"
+title: "Título da nota"
 subtitle: "Tópico — Assunto"
 description: "Uma frase sobre o que a nota cobre."
 author: "Raphael Teixeira"
@@ -7,7 +7,6 @@ date: "AAAA-MM-DD"
 date-modified: last-modified
 categories: [C2000, CCS]
 placa: "LAUNCHXL-F28379D"
-ordem: NN
 status: rascunho        # rascunho | revisão | consolidada
 lang: pt-BR
 ---

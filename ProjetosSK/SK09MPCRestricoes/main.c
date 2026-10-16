@@ -1,7 +1,7 @@
 // ============================================================================
 //  SK09MPCRestricoes - MPC com restricoes em u, du e y (filtro Sallen-Key)
 //  QP resolvido a cada amostra pelo metodo de Hildreth.
-//  Ensaios (Nota 06): mudar so as restricoes abaixo e regravar
+//  Ensaios (nota de controle preditivo): mudar so as restricoes abaixo e regravar
 //      E1: usaU = 1, uMax = 1.3          (comparar com o SK08 com uMax = 1.3)
 //      E2: usaDU = 1, duMax = 0.01       (taxa de 10 V/s)
 //      E3: passoY = 10, yMax = 1.15      (saida limitada abaixo da referencia)
@@ -31,7 +31,7 @@ void main(void)
 
     // ---- Parametros do MPC:
     const ParametrosMPC p = {
-        .modelo = {           // ARX(2,2,1), Ts = 1 ms (Nota 02, DadosPRBS1ms.csv)
+        .modelo = {           // ARX(2,2,1), Ts = 1 ms (identificacao do Sallen-Key, DadosPRBS1ms.csv)
             .a1 = 1.60918827f, .a2 = -0.62250084f,
             .b1 = 0.01096776f, .b2 = 0.00237673f,
             .uOp = 1.0f,       .yOp = 0.99671789f,
