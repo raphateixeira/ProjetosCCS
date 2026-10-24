@@ -42,3 +42,6 @@ __pycache__/
 
 # Pacotes .zip dos projetos do CCS: gerados a cada renderização (scripts/empacota_projetos.py)
 /downloads/
+
+# PDFs da TI baixados para consulta (direitos da TI): nao versionar
+Notas/ControleCorrenteVSI/docs/

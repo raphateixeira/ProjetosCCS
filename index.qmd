@@ -37,7 +37,7 @@ ADC.
 
 **Apresentações**
 
-* [Identificação do Filtro Sallen-Key](Notas/IdentificacaoSallenKeyPRBS/index.html) — ensaios ao degrau e PRBS com a LaunchPad e identificação de um modelo ARX.
+* [Identificação do Filtro Sallen-Key](Notas/IdentificacaoSallenKeyPRBS/index.html) — escolha de $T_s$ e da duração do bit da PRBS, ARX(2,2,1) por mínimos quadrados × OE e validação com os ensaios na placa.
 * [Controle Proporcional](Notas/ControleProporcional/index.html) — controle P na placa: erro em regime de uma planta tipo 0, medido × previsto e comparação entre ganhos.
 * [Controle PI](Notas/ControlePI/index.html) — PI por cancelamento polo-zero: erro nulo, comparação com o P e *windup* sem e com anti-windup.
 * [Controle Preditivo](Notas/ControlePreditivo/index.html) — MPC convencional com o modelo ARX identificado: previsão, função custo, horizontes, minimização pelo gradiente e custo computacional na placa.
@@ -47,7 +47,7 @@ ADC.
 | Projeto | Ensaio | Código |
 |---|---|---|
 | `SK01Degrau` | onda quadrada 0,6 ↔ 1,4 V, $T_s$ = 1 ms | [.zip](downloads/SK01Degrau.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosSK/SK01Degrau) |
-| `SK02PRBS` | PRBS 1,0 ± 0,4 V, $T_b$ = 5 ms, $T_s$ = 1 ms | [.zip](downloads/SK02PRBS.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosSK/SK02PRBS) |
+| `SK02PRBS` | PRBS 1,0 ± 0,4 V, $T_b$ = 20 ms ($N_b$ = 4), $T_s$ = 5 ms | [.zip](downloads/SK02PRBS.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosSK/SK02PRBS) |
 | `SK03ControleP` | controle proporcional | [.zip](downloads/SK03ControleP.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosSK/SK03ControleP) |
 | `SK04ControlePI` | controle PI, com e sem anti-windup | [.zip](downloads/SK04ControlePI.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosSK/SK04ControlePI) |
 | `SK05Senoide` | senoide de 5 Hz, 1,0 ± 0,3 V | [.zip](downloads/SK05Senoide.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosSK/SK05Senoide) |
@@ -75,6 +75,29 @@ cíclica pelo PWM e mede a tensão de saída no ADC.
 |---|---|---|
 | `BK01Degrau` | malha aberta: rampa até 10 V e onda quadrada 10 ↔ 12 V, PWM de 20 kHz, $T_s$ = 50 µs | [.zip](downloads/BK01Degrau.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosBuck/BK01Degrau) |
 | `PWM_prbs` | malha aberta: PRBS de 9 bits na razão cíclica, $T_b$ = 200 µs, $T_s$ = 50 µs | [.zip](downloads/PWM_prbs.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosBuck/PWM_prbs) |
+
+## Inversor Trifásico
+
+Inversor GaN **BOOSTXL-3PHGANINV** (12 a 60 V, sensores de corrente INA240 em linha com shunt
+de 5 mΩ) nos *headers* J1–J4 da LaunchPad, alimentando uma carga RL trifásica em estrela
+(R = 4,7 Ω e L = 1 mH por fase).
+
+**Nota do sistema**
+
+* Em preparação: inversor, modelo da carga em dq, sensoriamento e plano dos ensaios.
+
+**Apresentações**
+
+* [Inversor Trifásico em Malha Aberta](Notas/InversorMalhaAberta/index.html) — primeiro experimento, para quem está começando: o que é um braço do inversor, como a placa gera o PWM (com animações), como encaixar as placas, onde ligar o osciloscópio e os valores esperados com a carga RL.
+* [Controle de Corrente do Inversor Trifásico](Notas/ControleCorrenteVSI/index.html) — hardware a partir da documentação da TI, conversões para A e V, proteção, sequência segura e o projeto `VSI02ControleCorrente` (níveis 1 → 2 → 3 → identificação, comandos pela UART).
+
+**Projetos do CCS** (`ProjetosVSI/`)
+
+| Projeto | Ensaio | Código |
+|---|---|---|
+| `VSI01MalhaAberta` | primeiro experimento, só o chaveamento: 50 % nas três fases, 25/50/75 % e senoidal (índice e frequência ajustáveis), PWM de 20 kHz, tempo morto de 100 ns; grava as tensões das fases (exportadas para CSV); roteiro em `TUTORIAL.md` | [.zip](downloads/VSI01MalhaAberta.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosVSI/VSI01MalhaAberta) |
+| `VSI01MalhaAbertaSemGravacao` | a mesma versão sem a gravação das tensões, testada na placa em 23/10/2026 | [.zip](downloads/VSI01MalhaAbertaSemGravacao.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosVSI/VSI01MalhaAbertaSemGravacao) |
+| `VSI02ControleCorrente` | corrente da carga RL: PWM de 50 %, malha aberta, PI em dq com desacoplamento e identificação (PRBS, degrau, multisseno); comandos e dados pela UART | [.zip](downloads/VSI02ControleCorrente.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosVSI/VSI02ControleCorrente) |
 
 ## Motor-Gerador
 

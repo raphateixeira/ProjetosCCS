@@ -25,7 +25,10 @@ aplicação específica — e as notas em Quarto que os documentam. Tema visual:
   "Projetos do CCS" → âncora da seção no índice). Atualmente: SK → nota do sistema =
   Planejamento dos Ensaios de Controle (`ControleSallenKey/`); apresentações: Identificação,
   Controle P, Controle PI, Controle Preditivo. Buck → nota do sistema em preparação;
-  apresentação: Identificação do Conversor Buck.
+  apresentação: Identificação do Conversor Buck. Inversor → apresentações Inversor Trifásico
+  em Malha Aberta (`Notas/InversorMalhaAberta/`, VSI01) e Controle de Corrente
+  do Inversor Trifásico (`Notas/ControleCorrenteVSI/`, revealjs com figuras recortadas dos PDFs
+  da TI em `imgs/ti_*.png`; os PDFs ficam em `docs/`, no `.gitignore`).
 - **Códigos para download**: o repositório é privado. `scripts/empacota_projetos.py` roda como
   `pre-render` e grava `downloads/<Projeto>.zip` de cada `Projetos*/<Projeto>/` com `.project`
   (só fontes e configurações; sem `Debug/`, `CPU1_*`, `device/driverlib/`), publicados pelo
@@ -34,7 +37,12 @@ aplicação específica — e as notas em Quarto que os documentam. Tema visual:
   - Nota simples: arquivo `NotaNN<Tema>.qmd` (front matter conforme `_templates/nota-modelo.qmd`).
   - Nota com ensaios: pasta `Notas/<Tema>/` com `index.qmd` = **uma apresentação revealjs**
     (Python/Jupyter), `dados/` (exportações do CCS), `analise/` (scripts Python), `imgs/`.
-    Ex.: identificação do SK em `Notas/IdentificacaoSallenKeyPRBS/`.
+    Ex.: identificação do SK em `Notas/IdentificacaoSallenKeyPRBS/` — reescrita curta (16 slides),
+    revealjs **sem Jupyter**: `analise/ident_sk.m` (MATLAB) gera `imgs/sk_*.png` e os números;
+    dados `dados/DadosPRBSSK01.csv` e `DadosDegrauSK01.csv` (ensaios do Kauã, Ts = 1 ms, decimados
+    para 5 ms). Conclusão: com Ts = 1 ms o ARX(2,2,1) erra K e o polo lento (mal condicionado;
+    a subida tem um salto de 0,17 V + patamar de ≈ 10 ms, não linear); com 5 ms, ARX = OE
+    (K = 1,00, τ = 29 e 7,9 ms). Os .py antigos de `analise/` ficaram, sem uso na nota.
   - Nota de planejamento (muito texto, equações e tabelas): pasta `Notas/<Tema>/` com
     `index.qmd` em **HTML** (documento, `code-fold`), não revealjs. Ex.: planejamento do SK em
     `Notas/ControleSallenKey/` (simulações em `analise/controle_sim.py`).
@@ -43,7 +51,7 @@ aplicação específica — e as notas em Quarto que os documentam. Tema visual:
 - `ProjetosSK/` — **somente projetos do CCS** do filtro Sallen-Key, **um por ensaio, simples e
   sem configuração pela WATCH** (o ensaio roda sozinho ao gravar; parâmetros como `#define`):
   `SK01Degrau/` (onda quadrada 0,6↔1,4 V, Ts = 1 ms, 2000 amostras), `SK02PRBS/` (PRBS 1,0±0,4 V,
-  Ts = 1 ms, Tb = 5 ms, 2000 amostras) — esses dois já no padrão refatorado: `main.c` com os
+  **Ts = 5 ms, Tb = 20 ms (Nb = 4)**, 2000 amostras = 10 s; antes 1 ms / 5 ms, que deu ARX ruim) — esses dois já no padrão refatorado: `main.c` com os
   parâmetros em unidades físicas (struct), `placa.c/.h` (`ConfiguraF28379D`, `ADC2y`, `DAC2u`,
   `FimAmostragem`), `ensaio.c/.h`, ISR `LacoAmostragem`, buffers `uV`/`yV`; `SK03ControleP/`, `SK04ControlePI/`, `SK05Senoide/` (uma senoide, 5 Hz,
   1,0±0,3 V, 800 amostras), `SK06VarreduraSenoidal/` (resposta em frequência: seno em degraus
@@ -71,12 +79,45 @@ aplicação específica — e as notas em Quarto que os documentam. Tema visual:
   Nenhum arquivo de conteúdo aqui: dados exportados vão para `Notas/<Tema>/dados/`.
   Só renomear/mover essa pasta com o CCS fechado; depois, reabrir a pasta e fazer Clean + Rebuild.
 - `ProjetosVSI/` — projetos do CCS do inversor trifásico (LAUNCHXL-F28379D + **BOOSTXL-3PHGANINV**
-  em J1–J4: ePWM1/2/3 = braços A/B/C em GPIO0–5, GPIO124 = habilitação, como no MotorControl
-  SDK `solutions/boostxl_3phganinv/f2837x`). Outro *workspace* do CCS (pasta própria com `.theia/`).
-  Mesmo padrão dos SK (parâmetros em struct no `main.c`, `placa.c/.h`). `VSI01MalhaAberta/`:
-  três senoides em malha aberta (fPWM = 20 kHz, tempo morto 0,5 µs, Vcc = 24 V, Vp = 8 V, 60 Hz,
-  rampa de 1 s), ISR `LacoPWM` no zero do ePWM1, `PWM2v(va, vb, vc)` com d = 1/2 + v/Vcc,
-  `senoides.c/.h`; grava `vaV`/`vbV`/`vcV` (2000 amostras, `ramgs0..2`) depois da rampa.
+  em J1–J4: ePWM1/2/3 = braços A/B/C em GPIO0–5, GPIO124 = /PWM enable **ativo em nível
+  baixo** (0 liga o buffer; o VSI01 antigo estava invertido), como no
+  MotorControl SDK `solutions/boostxl_3phganinv/f2837x`). Sem barramento, o BoosterPack fica
+  sem 5 V/3,3 V (LM5017): INA240 e buffer desligados, os comparadores disparam. Outro *workspace* do CCS (pasta própria com `.theia/`).
+  `VSI01MalhaAberta/` = **primeiro experimento, para iniciantes** (reescrito em 2026-10-23 a
+  partir de uma proposta do professor, revisada): **um `main.c` só**, nomes descritivos em
+  português (`TOPO`, `TEMPO_MORTO`, `CONTAGENS_MORTO`, `razaoCiclica[3]`, `AtualizaPWM`,
+  `ConfiguraModuloPWM`, `EscreveRazao`, `ConfiguraPinos`), variáveis na janela **Watch**
+  (`modo` 0 = 50 % / 1 = 25-50-75 % / 2 = senoidal, `habilita`, `indice`, `frequencia`).
+  fPWM = 20 kHz, tempo morto 100 ns, razão limitada a 5–95 %, CBC6 (parada do emulador) força
+  A e B em 0, contadores sincronizados só pelo TBCLKSYNC (a cadeia de sync da proposta foi
+  retirada: faltava `setCountModeAfterSync`). Mede as tensões das fases do BoosterPack
+  (ADCINC3/B3/A3 = vA/vB/vC, ×24,7, filtro de 1 kHz) e o barramento (ADCIN14, ADCD), SOCA do
+  EPWM1 no zero, lidos na ISR depois do ADCINT1; `grava` = 1 → 2 (gravando) → 0 enche
+  `tensaoA/B/C` (2000 floats, `ramgs0..2`), exportados da Watch para CSV e lidos por
+  `Notas/InversorMalhaAberta/analise/plota_tensoes.py`. Com o ADC, o `.text` do `main.obj`
+  passou de 2 K palavras: `--gen_func_subsections=on` no `.cproject` (como no VSI02).
+  `VSI01MalhaAbertaSemGravacao/` = cópia da versão **testada na placa** em 2026-10-23 (modos
+  0–3, sem ADC; código de máquina do `main.obj` idêntico ao build que funcionou). Na versão com
+  ADC, as funções do PWM (`ConfiguraPinos`, `ConfiguraModuloPWM`, `EscreveRazao`) têm código de
+  máquina idêntico ao testado; só entraram as chamadas a `ConfiguraADC`/`LeTensoes`. `TUTORIAL.md` na
+  pasta. Apresentação `Notas/InversorMalhaAberta/` (revealjs, 31 slides, figuras e GIFs gerados
+  por `analise/figuras.py`, inclusive a montagem das placas a partir das figuras da TI e a
+  simulação da carga RL a 12 V). Modo 3 = razão manual (`razaoManual[3]`). A apresentação
+  inclui o mapa dos pinos (`imgs/pinos_launchpad.png`, serigrafia da SPRUI77C fig. 18 girada) e
+  um filtro RC de 10 kΩ/100 nF (corte de 159 Hz) para ver a senoide do modo 2, nos pinos J4 ou
+  nos bornes VA/VB/VC.
+  `VSI02ControleCorrente/`: carga RL (4,7 Ω, 1 mH, estrela); estrutura pedida pelo professor
+  (`main.c`, `hal.c/h`, `controle.c/h`, `tarefas.c/h`, não `placa.c`). ISR = ADCA INT1 (SOCA do
+  EPWM1 no zero, a cada `nControle` períodos); correntes ADCINC2/B2/A2 (iA/iB/iC), vA/vB/vC em
+  C3/B3/A3, Vdc em ADCIN14 (ADCD); i = −7,32 mA·(N − N0) (REF5030 de 3,0 V, INA240 0,1 V/A,
+  invertido), V = 24,7·vADC; CMPSS6/3/1 + GPIO24 → TRIP4 → DCAEVT1 → OST; limiar em torno do
+  offset medido. Níveis 1 (50 %), 2 (malha aberta), 3 (PI dq + desacoplamento, kp = 2πfcL,
+  ki = 2πfcR), 4 (identificação: PRBS 9 bits/degrau/multisseno Schroeder em v_dq). Registro de 4
+  canais × 2000 em `ramgs0..3`, multisseno em `ramgs4`. UART SCIA 115200 com comandos de texto
+  (S, H, D, L, C, N, F, V, R, P, E, I, M, G, B; ver `tarefas.h`). Precisa de
+  `--gen_func_subsections=on` (no `.cproject`); no `.cmd` de FLASH o `.text` não usa a FLASHB.
+  Compilado fora do CCS com o cl2000 de `/Applications/Texas/ccs2101` (RAM e FLASH linkam).
+  Pendentes: script Python do PC (Etapa 3) e `TUTORIAL.md` (Etapa 4).
 - `ProjetosBuck/` — projetos do CCS do conversor buck da IC (`GitRTx/ControleBuck`: Vin = 30 V,
   L = 525 µH, C = 41,7 µF, R = 1 Ω, MOSFET + diodo → uma chave só). Outro *workspace* do CCS
   (pasta própria com `.theia/`). Saída da placa por **PWM** (EPWM1A, GPIO0, J4.40), não pelo DAC;

@@ -64,6 +64,16 @@ website:
           - text: "---"
           - text: "Projetos do CCS"
             href: index.qmd#conversor-buck
+      - text: "Inversor Trifásico"
+        menu:
+          - text: "Apresentações"
+          - text: "Inversor Trifásico em Malha Aberta"
+            href: Notas/InversorMalhaAberta/index.qmd
+          - text: "Controle de Corrente do Inversor Trifásico"
+            href: Notas/ControleCorrenteVSI/index.qmd
+          - text: "---"
+          - text: "Projetos do CCS"
+            href: index.qmd#inversor-trifásico
       - text: "Motor-Gerador"
         href: index.qmd#motor-gerador
       - icon: github

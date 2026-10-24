@@ -94,7 +94,7 @@ SECTIONS
    .const              : > FLASHF,       PAGE = 0,       ALIGN(8)
 #else
    .pinit              : > FLASHB,       PAGE = 0,       ALIGN(8)
-   .ebss               : >> RAMLS5 | RAMGS0 | RAMGS1,    PAGE = 1
+   .ebss               : >> RAMLS5 | RAMGS6 | RAMGS7,    PAGE = 1
    .esysmem            : > RAMLS5,       PAGE = 1
    .cio                : > RAMLS5,       PAGE = 1
    /* Initalized sections go in Flash */
@@ -108,6 +108,7 @@ SECTIONS
    SHARERAMGS2		: > RAMGS2,		PAGE = 1
    ramgs0           : > RAMGS0,     PAGE = 1
    ramgs1           : > RAMGS1,     PAGE = 1
+   ramgs2           : > RAMGS2,     PAGE = 1   /* VSI01: tensaoC */
 
 #ifdef __TI_COMPILER_VERSION__
     #if __TI_COMPILER_VERSION__ >= 15009000
