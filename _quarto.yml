@@ -27,8 +27,8 @@ website:
   repo-url: https://github.com/raphateixeira/ProjetosCCS
   reader-mode: true
   navbar:
-    background: "#1F3A5F"
-    foreground: "#FFFFFF"
+    background: "#FFFFFF"   # navbar branca (camada "Site" do TemaRTx.scss)
+    foreground: "#0F1B33"
     title: "Projetos CCS"
     left:
       - text: "Início"

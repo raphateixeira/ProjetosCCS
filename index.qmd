@@ -1,10 +1,21 @@
 ---
-title: "Projetos CCS"
-subtitle: "Projetos com a LaunchPad C2000 LAUNCHXL-F28379D no Code Composer Studio"
-author: "Prof. Dr. Raphael Barros Teixeira"
+pagetitle: "Projetos CCS"
+
 ---
 
-[⬅ Site principal](https://raphateixeira.github.io)
+::: {.rtx-hero}
+[Laboratório · LAUNCHXL-F28379D]{.rtx-eyebrow}
+
+# Projetos CCS {.unnumbered .unlisted}
+
+Projetos com a LaunchPad C2000 LAUNCHXL-F28379D no Code Composer Studio: filtro Sallen-Key, conversor Buck e inversor trifásico, com notas e apresentações dos ensaios.
+
+[Prof. Dr. Raphael Teixeira]{.rtx-meta}
+
+::: {.rtx-acoes}
+[GitHub](https://github.com/raphateixeira/ProjetosCCS){.rtx-btn} [Site do professor](https://raphateixeira.github.io){.rtx-btn}
+:::
+:::
 
 Repositório dos projetos desenvolvidos no **Code Composer Studio (CCS)** com a placa
 **LAUNCHXL-F28379D** (LaunchPad C2000 Delfino, TMS320F28379D), organizados por sistema. Cada
