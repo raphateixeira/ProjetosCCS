@@ -67,6 +67,10 @@ ADC.
 | `SK08MPCAnalitico` | MPC com solução analítica | [.zip](downloads/SK08MPCAnalitico.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosSK/SK08MPCAnalitico) |
 | `SK09MPCRestricoes` | MPC com restrições | [.zip](downloads/SK09MPCRestricoes.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosSK/SK09MPCRestricoes) |
 
+**Trabalho de conclusão de curso** (`FiltroSK/`)
+
+* TCC de **Raissa Stephany Teixeira Paiva** (2025): [Filtro Sallen-Key como pocket-lab para ensino de identificação e controle de sistemas dinâmicos](https://bdm.ufpa.br/items/f010c31b-a220-4e7a-8d31-bee892d965aa) — [modelagem analítica](FiltroSK/modelagem-analítica.ipynb), [identificação por mínimos quadrados](FiltroSK/Identificação_MMQ.ipynb) e o [modelo LSTM e os dados](https://github.com/raphateixeira/ProjetosCCS/tree/main/FiltroSK).
+
 ## Conversor Buck e inversor trifásico
 
 Os projetos do CCS, as apresentações dos ensaios e as simulações do **conversor Buck** e do

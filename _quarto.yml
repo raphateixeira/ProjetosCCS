@@ -16,6 +16,7 @@ project:
     - index.qmd
     - Notas/*.qmd
     - Notas/*/*.qmd
+    - FiltroSK/*.ipynb      # TCC Raissa (ex-repositório FiltroSK), renderizados sem reexecução
 
 execute:
   freeze: auto
@@ -56,6 +57,12 @@ website:
           - text: "---"
           - text: "Projetos do CCS"
             href: index.qmd#filtro-sallen-key
+          - text: "---"
+          - text: "TCC — pocket-lab (Raissa)"
+          - text: "Modelagem analítica"
+            href: FiltroSK/modelagem-analítica.ipynb
+          - text: "Identificação por mínimos quadrados"
+            href: FiltroSK/Identificação_MMQ.ipynb
       - text: "Buck e inversor"
         href: https://raphateixeira.github.io/ConversoresPotencia/
       - text: "Motor-Gerador"

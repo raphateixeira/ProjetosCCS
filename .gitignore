@@ -45,3 +45,6 @@ __pycache__/
 
 # PDFs da TI baixados para consulta (direitos da TI): nao versionar
 Notas/ControleCorrenteVSI/docs/
+
+# FiltroSK (TCC Raissa): PDFs de terceiros (notas de aplicação da TI, trabalho LDSB) — uso local, nunca versionar
+FiltroSK/*.pdf
