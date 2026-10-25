@@ -8,7 +8,7 @@ pagetitle: "Projetos CCS"
 
 # Projetos CCS {.unnumbered .unlisted}
 
-Projetos com a LaunchPad C2000 LAUNCHXL-F28379D no Code Composer Studio: filtro Sallen-Key, conversor Buck e inversor trifásico, com notas e apresentações dos ensaios.
+Projetos com a LaunchPad C2000 LAUNCHXL-F28379D no Code Composer Studio: filtro Sallen-Key e, em preparação, motor-gerador (o conversor Buck e o inversor trifásico estão em Conversores de Potência), com notas e apresentações dos ensaios.
 
 [Prof. Dr. Raphael Teixeira]{.rtx-meta}
 
@@ -67,48 +67,13 @@ ADC.
 | `SK08MPCAnalitico` | MPC com solução analítica | [.zip](downloads/SK08MPCAnalitico.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosSK/SK08MPCAnalitico) |
 | `SK09MPCRestricoes` | MPC com restrições | [.zip](downloads/SK09MPCRestricoes.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosSK/SK09MPCRestricoes) |
 
-## Conversor Buck
+## Conversor Buck e inversor trifásico
 
-Conversor CC-CC abaixador (30 V → 10 V) com chave única e diodo: a placa comanda a razão
-cíclica pelo PWM e mede a tensão de saída no ADC.
+Os projetos do CCS, as apresentações dos ensaios e as simulações do **conversor Buck** e do
+**inversor trifásico** passaram para o repositório [Conversores de Potência](https://raphateixeira.github.io/ConversoresPotencia/) em 2026-10-25:
 
-**Nota do sistema**
-
-* Em preparação: conversor, modelo médio, sensoriamento, PWM na LaunchPad e plano dos ensaios.
-
-**Apresentações**
-
-* [Identificação do Conversor Buck](Notas/IdentificacaoBuckPRBS/index.html) — escolha de $T_s$ e da duração do bit da PRBS, identificação ARX(2,2,2) e validação, simuladas em MATLAB.
-
-**Projetos do CCS** (`ProjetosBuck/`)
-
-| Projeto | Ensaio | Código |
-|---|---|---|
-| `BK01Degrau` | malha aberta: rampa até 10 V e onda quadrada 10 ↔ 12 V, PWM de 20 kHz, $T_s$ = 50 µs | [.zip](downloads/BK01Degrau.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosBuck/BK01Degrau) |
-| `PWM_prbs` | malha aberta: PRBS de 9 bits na razão cíclica, $T_b$ = 200 µs, $T_s$ = 50 µs | [.zip](downloads/PWM_prbs.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosBuck/PWM_prbs) |
-
-## Inversor Trifásico
-
-Inversor GaN **BOOSTXL-3PHGANINV** (12 a 60 V, sensores de corrente INA240 em linha com shunt
-de 5 mΩ) nos *headers* J1–J4 da LaunchPad, alimentando uma carga RL trifásica em estrela
-(R = 4,7 Ω e L = 1 mH por fase).
-
-**Nota do sistema**
-
-* Em preparação: inversor, modelo da carga em dq, sensoriamento e plano dos ensaios.
-
-**Apresentações**
-
-* [Inversor Trifásico em Malha Aberta](Notas/InversorMalhaAberta/index.html) — primeiro experimento, para quem está começando: o que é um braço do inversor, como a placa gera o PWM (com animações), como encaixar as placas, onde ligar o osciloscópio e os valores esperados com a carga RL.
-* [Controle de Corrente do Inversor Trifásico](Notas/ControleCorrenteVSI/index.html) — hardware a partir da documentação da TI, conversões para A e V, proteção, sequência segura e o projeto `VSI02ControleCorrente` (níveis 1 → 2 → 3 → identificação, comandos pela UART).
-
-**Projetos do CCS** (`ProjetosVSI/`)
-
-| Projeto | Ensaio | Código |
-|---|---|---|
-| `VSI01MalhaAberta` | primeiro experimento, só o chaveamento: 50 % nas três fases, 25/50/75 % e senoidal (índice e frequência ajustáveis), PWM de 20 kHz, tempo morto de 100 ns; grava as tensões das fases (exportadas para CSV); roteiro em `TUTORIAL.md` | [.zip](downloads/VSI01MalhaAberta.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosVSI/VSI01MalhaAberta) |
-| `VSI01MalhaAbertaSemGravacao` | a mesma versão sem a gravação das tensões, testada na placa em 23/10/2026 | [.zip](downloads/VSI01MalhaAbertaSemGravacao.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosVSI/VSI01MalhaAbertaSemGravacao) |
-| `VSI02ControleCorrente` | corrente da carga RL: PWM de 50 %, malha aberta, PI em dq com desacoplamento e identificação (PRBS, degrau, multisseno); comandos e dados pela UART | [.zip](downloads/VSI02ControleCorrente.zip) · [GitHub](https://github.com/raphateixeira/ProjetosCCS/tree/main/ProjetosVSI/VSI02ControleCorrente) |
+* [Conversor Buck](https://raphateixeira.github.io/ConversoresPotencia/#buck) — identificação na placa e firmware (`BK01Degrau`, `PWM_prbs`);
+* [Inversor trifásico](https://raphateixeira.github.io/ConversoresPotencia/#inversor) — malha aberta, controle de corrente e firmware (`VSI01`, `VSI02`), além das simulações VSI01–VSI09.
 
 ## Motor-Gerador
 

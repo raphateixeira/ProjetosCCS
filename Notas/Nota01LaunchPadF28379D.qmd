@@ -286,7 +286,7 @@ valores. O formato CSV acima é lido pela função `le_csv_ccs()` dos scripts de
 
 - [Identificação do Filtro Sallen-Key](IdentificacaoSallenKeyPRBS/index.qmd) —
   ensaios ao degrau e PRBS e identificação ARX usando os recursos desta nota;
-- [Controle do Inversor Trifásico](https://raphateixeira.github.io/ControleInversor3f/) —
+- [Controle do Inversor Trifásico](https://raphateixeira.github.io/ConversoresPotencia/#carga-rl) —
   exemplo de aplicação desta placa.
 
 ## Referências

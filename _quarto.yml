@@ -56,24 +56,8 @@ website:
           - text: "---"
           - text: "Projetos do CCS"
             href: index.qmd#filtro-sallen-key
-      - text: "Conversor Buck"
-        menu:
-          - text: "Apresentações"
-          - text: "Identificação do Conversor Buck"
-            href: Notas/IdentificacaoBuckPRBS/index.qmd
-          - text: "---"
-          - text: "Projetos do CCS"
-            href: index.qmd#conversor-buck
-      - text: "Inversor Trifásico"
-        menu:
-          - text: "Apresentações"
-          - text: "Inversor Trifásico em Malha Aberta"
-            href: Notas/InversorMalhaAberta/index.qmd
-          - text: "Controle de Corrente do Inversor Trifásico"
-            href: Notas/ControleCorrenteVSI/index.qmd
-          - text: "---"
-          - text: "Projetos do CCS"
-            href: index.qmd#inversor-trifásico
+      - text: "Buck e inversor"
+        href: https://raphateixeira.github.io/ConversoresPotencia/
       - text: "Motor-Gerador"
         href: index.qmd#motor-gerador
       - icon: github
